@@ -1,0 +1,14 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # تجاهل طلبات Backend
+    RewriteRule ^backend/ - [L]
+
+    # إذا كان الملف أو المجلد موجود، استخدمه
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+
+    # وإلا أرسل للـ index.html (React SPA)
+    RewriteRule ^ index.html [L]
+</IfModule>

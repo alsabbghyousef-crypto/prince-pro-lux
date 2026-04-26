@@ -1,0 +1,40 @@
+# ── Database Dumps ──────────────────────────
+*.sql
+*.sql.gz
+*.dump
+
+# ── OS files ────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Node / Frontend ─────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# ── Laravel / Backend ────────────────────────
+public_html/backend/vendor/
+public_html/backend/.env
+public_html/backend/storage/framework/cache/data/*
+public_html/backend/storage/framework/sessions/*
+public_html/backend/storage/framework/views/*
+public_html/backend/storage/logs/*.log
+public_html/backend/bootstrap/cache/*.php
+!public_html/backend/bootstrap/cache/.gitignore
+public_html/backend/backend/vendor/
+
+# ── Temp / Debug files ────────────────────────
+*.py
+*.txt
+*.bak
+public_html/backend/test*.php
+public_html/backend/test*.js
+public_html/backend/test*.cjs
+public_html/backend/setup_*.php
+public_html/backend/create_*.php
+public_html/backend/reset_*.php
+public_html/backend/check_*.php
+
+# Large zip files
+*.zip
