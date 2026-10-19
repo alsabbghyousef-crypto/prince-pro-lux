@@ -27,7 +27,13 @@ if [ "$DB_CONNECTION" = "sqlite" ] || [ -z "$DB_CONNECTION" ]; then
     mkdir -p /var/www/backend/database
     touch /var/www/backend/database/database.sqlite
     chown -R www-data:www-data /var/www/backend/database
+    chmod -R 777 /var/www/backend/database
 fi
+
+# Ensure uploads directory permissions
+mkdir -p /var/www/backend/public/uploads
+chown -R www-data:www-data /var/www/backend/public/uploads
+chmod -R 775 /var/www/backend/public/uploads
 
 # Create storage symlink
 php artisan storage:link --force || true
