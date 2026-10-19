@@ -35,6 +35,9 @@ php artisan storage:link --force || true
 # Run migrations
 php artisan migrate --force || true
 
+# Seed default database if empty
+php artisan db:seed --force || true
+
 # Cache configuration & routes for production speed
 php artisan config:cache || true
 php artisan route:cache || true
