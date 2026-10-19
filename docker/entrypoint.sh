@@ -3,6 +3,20 @@ set -e
 
 cd /var/www/backend
 
+# Ensure .env exists
+if [ ! -f .env ]; then
+    if [ -f .env.example ]; then
+        cp .env.example .env
+    else
+        touch .env
+    fi
+fi
+
+# Ensure APP_KEY exists in .env
+if ! grep -q "APP_KEY=base64:" .env 2>/dev/null; then
+    php artisan key:generate --force || true
+fi
+
 # If PORT is set by cloud provider (Render/Railway), update nginx port
 if [ -n "$PORT" ]; then
     sed -i "s/listen 80/listen $PORT/g" /etc/nginx/nginx.conf
@@ -13,11 +27,6 @@ if [ "$DB_CONNECTION" = "sqlite" ] || [ -z "$DB_CONNECTION" ]; then
     mkdir -p /var/www/backend/database
     touch /var/www/backend/database/database.sqlite
     chown -R www-data:www-data /var/www/backend/database
-fi
-
-# Generate APP_KEY if not provided
-if [ -z "$APP_KEY" ]; then
-    php artisan key:generate --force
 fi
 
 # Create storage symlink

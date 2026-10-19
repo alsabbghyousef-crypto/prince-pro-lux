@@ -40,9 +40,11 @@ WORKDIR /var/www
 # Copy backend
 COPY public_html/backend /var/www/backend
 
-# Install backend dependencies
+# Install backend dependencies & prepare initial .env
 WORKDIR /var/www/backend
-RUN composer install --no-dev --optimize-autoloader --no-interaction
+RUN composer install --no-dev --optimize-autoloader --no-interaction \
+    && cp .env.example .env \
+    && php artisan key:generate --ansi
 
 # Copy frontend build from stage 1
 COPY --from=frontend-builder /app/frontend/dist /var/www/frontend
