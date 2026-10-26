@@ -119,8 +119,8 @@ class DataSheetController extends Controller
         $request->validate([
             'file' => 'required|file|max:51200', // up to 50 MB
             'title' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:datasheet_categories,id',
-            'subcategory_id' => 'nullable|exists:datasheet_categories,id',
+            'category_id' => 'nullable',
+            'subcategory_id' => 'nullable',
             'description' => 'nullable|string|max:2000',
             'tags' => 'nullable|string|max:255',
         ]);
@@ -147,6 +147,9 @@ class DataSheetController extends Controller
             ], 500);
         }
 
+        $categoryId = (!empty($request->category_id) && $request->category_id !== 'null') ? (int) $request->category_id : null;
+        $subcategoryId = (!empty($request->subcategory_id) && $request->subcategory_id !== 'null') ? (int) $request->subcategory_id : null;
+
         $datasheet = DataSheet::create([
             'title' => $request->title,
             'original_name' => $originalName,
@@ -154,8 +157,8 @@ class DataSheetController extends Controller
             'file_type' => $fileType,
             'file_extension' => $extension,
             'file_size' => $fileSize,
-            'category_id' => $request->category_id,
-            'subcategory_id' => $request->subcategory_id,
+            'category_id' => $categoryId,
+            'subcategory_id' => $subcategoryId,
             'description' => $request->description,
             'tags' => $request->tags,
             'downloads_count' => 0,
@@ -180,16 +183,16 @@ class DataSheetController extends Controller
         $request->validate([
             'file' => 'nullable|file|max:51200',
             'title' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:datasheet_categories,id',
-            'subcategory_id' => 'nullable|exists:datasheet_categories,id',
+            'category_id' => 'nullable',
+            'subcategory_id' => 'nullable',
             'description' => 'nullable|string|max:2000',
             'tags' => 'nullable|string|max:255',
         ]);
 
         $data = [
             'title' => $request->title,
-            'category_id' => $request->category_id,
-            'subcategory_id' => $request->subcategory_id,
+            'category_id' => (!empty($request->category_id) && $request->category_id !== 'null') ? (int) $request->category_id : null,
+            'subcategory_id' => (!empty($request->subcategory_id) && $request->subcategory_id !== 'null') ? (int) $request->subcategory_id : null,
             'description' => $request->description,
             'tags' => $request->tags,
         ];

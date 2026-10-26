@@ -33,8 +33,13 @@ fi
 # Ensure uploads directory permissions
 mkdir -p /var/www/backend/public/uploads/datasheets
 mkdir -p /var/www/backend/public/uploads/products
-chown -R www-data:www-data /var/www/backend/public/uploads
-chmod -R 777 /var/www/backend/public/uploads
+chown -R www-data:www-data /var/www/backend/public
+chmod -R 777 /var/www/backend/public
+
+# Ensure nginx body/fastcgi temp directories exist with full permissions
+mkdir -p /tmp/client_body /tmp/fastcgi_temp /tmp/proxy_temp /var/lib/nginx/tmp/client_body /var/lib/nginx/tmp/fastcgi
+chown -R www-data:www-data /tmp/client_body /tmp/fastcgi_temp /tmp/proxy_temp /var/lib/nginx
+chmod -R 777 /tmp/client_body /tmp/fastcgi_temp /tmp/proxy_temp /var/lib/nginx
 
 # Create storage symlink
 php artisan storage:link --force || true
