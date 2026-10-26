@@ -75,7 +75,8 @@
 html, body, #root {
   direction: rtl;
   text-align: right;
-  font-family: 'Segoe UI', Tahoma, 'Arial', sans-serif;
+  font-family: 'Cairo', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  letter-spacing: -0.01em;
 }
 
 /* Ensure all inputs and selects are RTL */

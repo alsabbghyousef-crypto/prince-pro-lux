@@ -13,8 +13,8 @@ import {
   FolderTree,
   Filter,
   Trash2,
-  Edit2,
-  Upload,
+  Edit3,
+  UploadCloud,
   X,
   AlertCircle,
   Layers,
@@ -30,16 +30,17 @@ import ModalPortal from '../components/ui/ModalPortal';
 import ViewToggle from '../components/ui/ViewToggle';
 import type { DataSheet, DataSheetCategory, DataSheetStats } from '../types/datasheet';
 
-// Helper to format bytes
+// Formats file sizes safely without RTL reversal issues
 function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
+  if (!bytes || bytes === 0) return '0 KB';
   const k = 1024;
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  const val = parseFloat((bytes / Math.pow(k, i)).toFixed(1));
+  return `${val} ${sizes[i]}`;
 }
 
-// Helper to format date
+// Arabic Date Formatter
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
   try {
@@ -54,7 +55,7 @@ function formatDate(dateStr: string): string {
   }
 }
 
-// File Type Colors & Icons
+// File Type Visual Configurations
 function getFileTypeConfig(fileType: string, extension: string) {
   const ext = (extension || '').toLowerCase();
   switch (fileType) {
@@ -62,57 +63,57 @@ function getFileTypeConfig(fileType: string, extension: string) {
       return {
         label: 'PDF',
         icon: FileText,
-        badgeBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+        badgeBg: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30',
         iconColor: 'text-rose-500',
-        cardGlow: 'hover:border-rose-500/40'
+        glow: 'hover:border-rose-500/50 hover:shadow-rose-500/5'
       };
     case 'excel':
       return {
-        label: ext.toUpperCase() || 'EXCEL',
+        label: ext ? ext.toUpperCase() : 'EXCEL',
         icon: FileSpreadsheet,
-        badgeBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+        badgeBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
         iconColor: 'text-emerald-500',
-        cardGlow: 'hover:border-emerald-500/40'
+        glow: 'hover:border-emerald-500/50 hover:shadow-emerald-500/5'
       };
     case 'word':
       return {
-        label: ext.toUpperCase() || 'WORD',
+        label: ext ? ext.toUpperCase() : 'WORD',
         icon: FileText,
-        badgeBg: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
-        iconColor: 'text-blue-500',
-        cardGlow: 'hover:border-blue-500/40'
+        badgeBg: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30',
+        iconColor: 'text-sky-500',
+        glow: 'hover:border-sky-500/50 hover:shadow-sky-500/5'
       };
     case 'image':
       return {
-        label: ext.toUpperCase() || 'صورة',
+        label: ext ? ext.toUpperCase() : 'صورة',
         icon: ImageIcon,
-        badgeBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20',
+        badgeBg: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/30',
         iconColor: 'text-purple-500',
-        cardGlow: 'hover:border-purple-500/40'
+        glow: 'hover:border-purple-500/50 hover:shadow-purple-500/5'
       };
     case 'archive':
       return {
-        label: ext.toUpperCase() || 'أرشيف',
+        label: ext ? ext.toUpperCase() : 'أرشيف',
         icon: Archive,
-        badgeBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+        badgeBg: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30',
         iconColor: 'text-amber-500',
-        cardGlow: 'hover:border-amber-500/40'
+        glow: 'hover:border-amber-500/50 hover:shadow-amber-500/5'
       };
     case 'text':
       return {
-        label: ext.toUpperCase() || 'نص',
+        label: ext ? ext.toUpperCase() : 'بيانات',
         icon: FileCode,
-        badgeBg: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20',
-        iconColor: 'text-cyan-500',
-        cardGlow: 'hover:border-cyan-500/40'
+        badgeBg: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30',
+        iconColor: 'text-teal-500',
+        glow: 'hover:border-teal-500/50 hover:shadow-teal-500/5'
       };
     default:
       return {
-        label: ext.toUpperCase() || 'ملف',
+        label: ext ? ext.toUpperCase() : 'ملف',
         icon: File,
-        badgeBg: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20',
+        badgeBg: 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/30',
         iconColor: 'text-slate-500',
-        cardGlow: 'hover:border-slate-500/40'
+        glow: 'hover:border-slate-500/50 hover:shadow-slate-500/5'
       };
   }
 }
@@ -120,7 +121,7 @@ function getFileTypeConfig(fileType: string, extension: string) {
 export default function DataSheetsPage() {
   const queryClient = useQueryClient();
 
-  // View state
+  // Search & Filters State
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<number | 'ALL'>('ALL');
@@ -128,14 +129,14 @@ export default function DataSheetsPage() {
   const [selectedFileType, setSelectedFileType] = useState<string>('ALL');
   const [sortBy, setSortBy] = useState<string>('latest');
 
-  // Modals state
+  // Modals State
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [previewFile, setPreviewFile] = useState<DataSheet | null>(null);
   const [editingFile, setEditingFile] = useState<DataSheet | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
-  // Upload Form state
+  // Upload Form State
   const [uploadFile, setUploadFile] = useState<globalThis.File | null>(null);
   const [uploadTitle, setUploadTitle] = useState('');
   const [uploadCategoryId, setUploadCategoryId] = useState<number | ''>('');
@@ -145,31 +146,31 @@ export default function DataSheetsPage() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
 
-  // Edit Form state
+  // Edit Form State
   const [editTitle, setEditTitle] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<number | ''>('');
   const [editSubcategoryId, setEditSubcategoryId] = useState<number | ''>('');
   const [editDescription, setEditDescription] = useState('');
   const [editTags, setEditTags] = useState('');
 
-  // Category Manager Form state
+  // Category Manager State
   const [newCatName, setNewCatName] = useState('');
   const [newCatParentId, setNewCatParentId] = useState<number | ''>('');
   const [catActionError, setCatActionError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 1. Fetch Categories
+  // 1. Fetch Categories & Subcategories
   const { data: categories = [] } = useQuery<DataSheetCategory[]>({
     queryKey: ['datasheet-categories'],
     queryFn: async () => {
       const res = await api.get('/datasheet-categories');
       return res.data;
     },
-    staleTime: 60000,
+    staleTime: 30000,
   });
 
-  // 2. Fetch DataSheets
+  // 2. Fetch DataSheets List & Statistics
   const { data: dataSheetsResponse, isLoading: isDataSheetsLoading } = useQuery<{ datasheets: DataSheet[]; stats: DataSheetStats }>({
     queryKey: ['datasheets', searchQuery, selectedCategory, selectedSubcategory, selectedFileType, sortBy],
     queryFn: async () => {
@@ -188,17 +189,9 @@ export default function DataSheetsPage() {
   const datasheets = dataSheetsResponse?.datasheets || [];
   const stats = dataSheetsResponse?.stats || { total_count: 0, total_size: 0, type_counts: {} };
 
-  // Subcategories available based on selected category in filters
-  const currentSubcategories = useMemo(() => {
-    if (selectedCategory === 'ALL') {
-      const allSubs: DataSheetCategory[] = [];
-      categories.forEach((cat) => {
-        if (cat.subcategories && cat.subcategories.length > 0) {
-          allSubs.push(...cat.subcategories);
-        }
-      });
-      return allSubs;
-    }
+  // Subcategories available based on the currently selected category tab
+  const activeSubcategories = useMemo(() => {
+    if (selectedCategory === 'ALL') return [];
     const cat = categories.find((c) => c.id === selectedCategory);
     return cat?.subcategories || [];
   }, [categories, selectedCategory]);
@@ -301,8 +294,8 @@ export default function DataSheetsPage() {
   const resetUploadForm = () => {
     setUploadFile(null);
     setUploadTitle('');
-    setUploadCategoryId('');
-    setUploadSubcategoryId('');
+    setUploadCategoryId(selectedCategory !== 'ALL' ? selectedCategory : '');
+    setUploadSubcategoryId(selectedSubcategory !== 'ALL' ? selectedSubcategory : '');
     setUploadDescription('');
     setUploadTags('');
     setUploadProgress(0);
@@ -312,7 +305,6 @@ export default function DataSheetsPage() {
 
   const handleFileSelect = (file: globalThis.File) => {
     setUploadFile(file);
-    // Auto-generate clean title by stripping extension
     const cleanName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     if (!uploadTitle) {
       setUploadTitle(cleanName);
@@ -368,7 +360,6 @@ export default function DataSheetsPage() {
   };
 
   const handleDownload = (file: DataSheet) => {
-    // Direct link trigger
     const link = document.createElement('a');
     link.href = file.file_path;
     link.setAttribute('download', file.original_name);
@@ -377,117 +368,255 @@ export default function DataSheetsPage() {
     link.click();
     document.body.removeChild(link);
 
-    // Call API to increment count
     api.get(`/datasheets/${file.id}/download`).catch(() => {});
   };
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 max-w-[1700px] mx-auto min-h-screen">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1750px] mx-auto min-h-screen font-sans">
       
-      {/* ── Page Header ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-card border border-border/60 p-5 rounded-2xl shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#f97316] to-[#ea580c] flex items-center justify-center text-white shadow-lg shadow-orange-500/20">
-            <FileSpreadsheet className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">
-                ملفات الداتا شير (Data Sheets)
-              </h1>
-              <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-[#f97316]/10 text-[#f97316] border border-[#f97316]/20">
-                مكتبة الملفات والمواصفات
-              </span>
-            </div>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-              رفع وتصنيف ومشاركة ملفات المواصفات الفنية والمخططات والكتالوجات والبحث السريع بالاسم
-            </p>
-          </div>
-        </div>
+      {/* ── 1. Hero Header Banner ── */}
+      <div className="relative overflow-hidden bg-card border border-border/80 rounded-3xl p-6 sm:p-7 shadow-sm">
+        {/* Decorative background glow */}
+        <div className="absolute top-0 right-0 w-96 h-96 bg-[#f97316]/5 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Action Buttons */}
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={() => setIsCategoryModalOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-border hover:bg-secondary/60 text-xs sm:text-sm font-semibold transition-all shadow-sm"
-          >
-            <FolderTree className="w-4 h-4 text-primary" />
-            <span>إدارة التصنيفات والفئات</span>
-          </button>
-
-          <button
-            onClick={() => {
-              resetUploadForm();
-              setIsUploadOpen(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-md shadow-primary/25 transition-all active:scale-[0.98]"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>رفع ملف داتا شير جديد</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Stats Overview Strip ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-card border border-border/60 p-4 rounded-xl flex items-center justify-between shadow-sm">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">إجمالي الملفات</p>
-            <p className="text-xl sm:text-2xl font-black text-foreground mt-1">{stats.total_count}</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
-            <File className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-card border border-border/60 p-4 rounded-xl flex items-center justify-between shadow-sm">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">الحجم الكلي المخزن</p>
-            <p className="text-xl sm:text-2xl font-black text-foreground mt-1">{formatFileSize(stats.total_size)}</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-            <HardDrive className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-card border border-border/60 p-4 rounded-xl flex items-center justify-between shadow-sm">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">ملفات PDF ومواصفات</p>
-            <p className="text-xl sm:text-2xl font-black text-foreground mt-1">{stats.type_counts?.pdf || 0}</p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center">
-            <FileText className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-card border border-border/60 p-4 rounded-xl flex items-center justify-between shadow-sm">
-          <div>
-            <p className="text-xs text-muted-foreground font-medium">جداول Excel والبيانات</p>
-            <p className="text-xl sm:text-2xl font-black text-foreground mt-1">
-              {(stats.type_counts?.excel || 0) + (stats.type_counts?.text || 0)}
-            </p>
-          </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 text-emerald-500 flex items-center justify-center">
-            <FileSpreadsheet className="w-5 h-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Filters & Search Controls Bar ── */}
-      <div className="bg-card border border-border/60 p-4 rounded-2xl space-y-4 shadow-sm">
-        
-        {/* Top Row: Search Input + Sorting + ViewToggle */}
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           
-          {/* Search Bar */}
+          {/* Title & Description */}
+          <div className="flex items-start sm:items-center gap-4 sm:gap-5">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-[#f97316] via-[#ea580c] to-[#c2410c] flex items-center justify-center text-white shadow-xl shadow-orange-500/25 shrink-0">
+              <FileSpreadsheet className="w-7 h-7 sm:w-8 sm:h-8" />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-foreground tracking-tight">
+                  ملفات الداتا شير (Data Sheets)
+                </h1>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-[#f97316]/10 text-[#f97316] border border-[#f97316]/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#f97316] animate-pulse" />
+                  مكتبة المواصفات والكتالوجات
+                </span>
+              </div>
+
+              <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
+                رفع وتنظيم ومشاركة ملفات المواصفات الفنية، المخططات الهندسية، والكتالوجات مع فلاتر هرمية وبحث فوري بالاسم.
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center flex-wrap gap-3 shrink-0">
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-border hover:bg-secondary/70 text-xs sm:text-sm font-bold text-foreground transition-all shadow-sm"
+            >
+              <FolderTree className="w-4 h-4 text-primary" />
+              <span>إدارة التصنيفات والفئات</span>
+            </button>
+
+            <button
+              onClick={() => {
+                resetUploadForm();
+                setIsUploadOpen(true);
+              }}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>رفع ملف داتا شير جديد</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. Stat Metric Cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        
+        {/* Total Files */}
+        <div className="relative overflow-hidden bg-card border border-border/80 p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-muted-foreground">إجمالي الملفات المرفوعة</span>
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+              <File className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-foreground">{stats.total_count}</span>
+            <span className="text-xs text-muted-foreground font-semibold">ملف</span>
+          </div>
+        </div>
+
+        {/* Total Storage Size */}
+        <div className="relative overflow-hidden bg-card border border-border/80 p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-muted-foreground">المساحة التخزينية المستهلكة</span>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <HardDrive className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-foreground font-mono" dir="ltr">
+              {formatFileSize(stats.total_size)}
+            </span>
+          </div>
+        </div>
+
+        {/* PDF Documents */}
+        <div className="relative overflow-hidden bg-card border border-border/80 p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-muted-foreground">ملفات PDF والكتالوجات</span>
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <FileText className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-foreground">{stats.type_counts?.pdf || 0}</span>
+            <span className="text-xs text-rose-600 dark:text-rose-400 font-semibold">كتالوج ومخطط</span>
+          </div>
+        </div>
+
+        {/* Excel & Data Sheets */}
+        <div className="relative overflow-hidden bg-card border border-border/80 p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-muted-foreground">جداول Excel والبيانات</span>
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <FileSpreadsheet className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl font-black text-foreground">
+              {(stats.type_counts?.excel || 0) + (stats.type_counts?.text || 0)}
+            </span>
+            <span className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">شيت ومستند</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 3. Interactive Category Pills Bar ── */}
+      <div className="bg-card border border-border/80 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-sm">
+        
+        {/* Main Categories Row */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-muted-foreground flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-primary" />
+              <span>التصنيفات الرئيسية (Categories)</span>
+            </span>
+
+            <button
+              onClick={() => setIsCategoryModalOpen(true)}
+              className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+              <span>+ إضافة فئة</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {/* "All" Category Pill */}
+            <button
+              onClick={() => {
+                setSelectedCategory('ALL');
+                setSelectedSubcategory('ALL');
+              }}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-2 ${
+                selectedCategory === 'ALL'
+                  ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 scale-[1.02]'
+                  : 'bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50'
+              }`}
+            >
+              <span>جميع التصنيفات</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                selectedCategory === 'ALL' ? 'bg-white/20 text-white' : 'bg-background text-foreground'
+              }`}>
+                {stats.total_count}
+              </span>
+            </button>
+
+            {/* Dynamic Main Categories */}
+            {categories.map((cat) => {
+              const isSelected = selectedCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  onClick={() => {
+                    setSelectedCategory(cat.id);
+                    setSelectedSubcategory('ALL');
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-2 ${
+                    isSelected
+                      ? 'bg-primary text-primary-foreground shadow-md shadow-primary/25 scale-[1.02]'
+                      : 'bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border/50'
+                  }`}
+                >
+                  <span>{cat.name}</span>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                    isSelected ? 'bg-white/20 text-white' : 'bg-background text-foreground'
+                  }`}>
+                    {cat.datasheets_count ?? 0}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Subcategories Row (Expands smoothly when a main category with subcategories is chosen) */}
+        {activeSubcategories.length > 0 && (
+          <div className="pt-3 border-t border-border/50 space-y-2 animate-in fade-in duration-200">
+            <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+              <FolderTree className="w-3.5 h-3.5 text-primary" />
+              <span>التصنيفات الفرعية التابعة:</span>
+            </span>
+
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <button
+                onClick={() => setSelectedSubcategory('ALL')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                  selectedSubcategory === 'ALL'
+                    ? 'bg-secondary text-foreground border border-primary/40 font-bold shadow-xs'
+                    : 'bg-secondary/40 text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                الكل
+              </button>
+
+              {activeSubcategories.map((sub) => {
+                const isSelected = selectedSubcategory === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    onClick={() => setSelectedSubcategory(sub.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-secondary text-primary border border-primary font-bold shadow-xs'
+                        : 'bg-secondary/40 text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    }`}
+                  >
+                    <span>{sub.name}</span>
+                    <span className="text-[10px] opacity-75 font-mono">({sub.datasheets_count ?? 0})</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── 4. Unified Command & Search Bar ── */}
+      <div className="bg-card border border-border/80 rounded-2xl p-4 space-y-3.5 shadow-sm">
+        
+        {/* Top Search Input & Controls */}
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          
+          {/* Main Search Input */}
           <div className="relative flex-1 w-full">
             <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               type="text"
-              placeholder="ابحث بالاسم، العنوان، اسم الملف الأصلي، الوصف، أو الكلمات الدلالية..."
+              placeholder="ابحث بالاسم، كود الموديل، اسم الملف الأصلي، الوصف، أو الكلمات الدلالية..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-10 py-2.5 bg-secondary/40 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              className="w-full pl-9 pr-10 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium"
             />
             {searchQuery && (
               <button
@@ -499,14 +628,16 @@ export default function DataSheetsPage() {
             )}
           </div>
 
-          {/* Sort Dropdown */}
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-1.5 px-3 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm text-muted-foreground shrink-0">
-              <ArrowUpDown className="w-4 h-4 text-primary" />
+          {/* Right Controls: Sort Dropdown & View Mode */}
+          <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 justify-between md:justify-start">
+            
+            {/* Sort Selector */}
+            <div className="flex items-center gap-2 px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs font-semibold text-muted-foreground">
+              <ArrowUpDown className="w-3.5 h-3.5 text-primary shrink-0" />
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="bg-transparent text-foreground font-medium focus:outline-none cursor-pointer"
+                className="bg-transparent text-foreground font-bold focus:outline-none cursor-pointer text-xs"
               >
                 <option value="latest">الأحدث إضافة</option>
                 <option value="oldest">الأقدم إضافة</option>
@@ -517,125 +648,103 @@ export default function DataSheetsPage() {
               </select>
             </div>
 
-            {/* View Mode Toggle */}
+            {/* View Toggle */}
             <ViewToggle viewMode={viewMode} setViewMode={setViewMode} />
           </div>
         </div>
 
-        {/* Second Row: Category & Subcategory Selectors */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-border/40">
-          
-          {/* Main Category Filter */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-primary" />
-              <span>التصنيف الرئيسي (Category)</span>
-            </label>
-            <select
-              value={selectedCategory}
-              onChange={(e) => {
-                const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
-                setSelectedCategory(val);
-                setSelectedSubcategory('ALL'); // Reset subcategory when category changes
-              }}
-              className="px-3 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
-            >
-              <option value="ALL">جميع التصنيفات الرئيسية ({stats.total_count})</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name} ({cat.datasheets_count ?? 0})
-                </option>
-              ))}
-            </select>
-          </div>
+        {/* Bottom Quick File-Type Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 border-t border-border/40">
+          <span className="text-xs font-bold text-muted-foreground ml-2 shrink-0 flex items-center gap-1">
+            <Filter className="w-3.5 h-3.5 text-primary" />
+            <span>نوع الملف:</span>
+          </span>
 
-          {/* Subcategory Filter */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-              <FolderTree className="w-3.5 h-3.5 text-primary" />
-              <span>التصنيف الفرعي (Subcategory)</span>
-            </label>
-            <select
-              value={selectedSubcategory}
-              onChange={(e) => setSelectedSubcategory(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
-              disabled={currentSubcategories.length === 0}
-              className="px-3 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
-            >
-              <option value="ALL">
-                {currentSubcategories.length === 0
-                  ? 'لا توجد تصنيفات فرعية متاحة'
-                  : 'جميع التصنيفات الفرعية'}
-              </option>
-              {currentSubcategories.map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.name} ({sub.datasheets_count ?? 0})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* File Type Filter Pills */}
-          <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-1">
-            <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5 text-primary" />
-              <span>نوع الملف (File Type)</span>
-            </label>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-              {[
-                { id: 'ALL', label: 'الكل' },
-                { id: 'pdf', label: 'PDF', color: 'hover:text-rose-500' },
-                { id: 'excel', label: 'Excel', color: 'hover:text-emerald-500' },
-                { id: 'word', label: 'Word', color: 'hover:text-blue-500' },
-                { id: 'image', label: 'صور', color: 'hover:text-purple-500' },
-                { id: 'other', label: 'أخرى', color: 'hover:text-amber-500' },
-              ].map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedFileType(t.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                    selectedFileType === t.id
-                      ? 'bg-primary text-primary-foreground shadow-sm'
-                      : 'bg-secondary/60 text-muted-foreground hover:bg-secondary ' + t.color
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          {[
+            { id: 'ALL', label: 'جميع الصيغ', icon: File },
+            { id: 'pdf', label: 'PDF', icon: FileText, color: 'text-rose-500' },
+            { id: 'excel', label: 'Excel', icon: FileSpreadsheet, color: 'text-emerald-500' },
+            { id: 'word', label: 'Word', icon: FileText, color: 'text-sky-500' },
+            { id: 'image', label: 'صور', icon: ImageIcon, color: 'text-purple-500' },
+            { id: 'other', label: 'أخرى', icon: Archive, color: 'text-amber-500' },
+          ].map((t) => {
+            const Icon = t.icon;
+            const isSelected = selectedFileType === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setSelectedFileType(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-primary text-primary-foreground shadow-xs'
+                    : 'bg-secondary/60 text-muted-foreground hover:bg-secondary hover:text-foreground'
+                }`}
+              >
+                <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-primary-foreground' : t.color}`} />
+                <span>{t.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* ── Content View (Grid or List) ── */}
+      {/* ── 5. File Content Area (Grid or Table) ── */}
       {isDataSheetsLoading ? (
-        <div className="py-20 flex flex-col items-center justify-center gap-3">
+        <div className="py-24 flex flex-col items-center justify-center gap-3">
           <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground font-medium">جاري تحميل ملفات الداتا شير...</p>
+          <p className="text-sm text-muted-foreground font-bold">جاري تحميل ملفات الداتا شير...</p>
         </div>
       ) : datasheets.length === 0 ? (
-        <div className="bg-card border border-dashed border-border rounded-2xl py-16 px-4 text-center max-w-lg mx-auto">
-          <div className="w-16 h-16 rounded-2xl bg-secondary/80 flex items-center justify-center mx-auto text-muted-foreground mb-4">
-            <FileSpreadsheet className="w-8 h-8 opacity-40" />
+        
+        /* ── Modern Empty State & Direct Dropzone ── */
+        <div className="bg-card border-2 border-dashed border-border/80 rounded-3xl p-10 sm:p-14 text-center max-w-2xl mx-auto shadow-sm">
+          <div className="w-20 h-20 rounded-3xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-5 shadow-inner">
+            <UploadCloud className="w-10 h-10 stroke-[1.75]" />
           </div>
-          <h3 className="text-base font-bold text-foreground">لا توجد ملفات تطابق البحث أو الفلتر</h3>
-          <p className="text-xs text-muted-foreground mt-1 max-w-sm mx-auto">
-            لم نتمكن من العثور على أي ملف داتا شير وفق المعايير المحددة. جرب تغيير كلمة البحث أو قم برفع ملف جديد.
+
+          <h3 className="text-lg sm:text-xl font-black text-foreground">
+            {searchQuery || selectedCategory !== 'ALL' || selectedFileType !== 'ALL'
+              ? 'لم يتم العثور على ملفات تطابق الفلتر'
+              : 'لم يتم رفع أي ملفات داتا شير حتى الآن'}
+          </h3>
+
+          <p className="text-xs sm:text-sm text-muted-foreground mt-2 max-w-md mx-auto leading-relaxed">
+            {searchQuery || selectedCategory !== 'ALL' || selectedFileType !== 'ALL'
+              ? 'جرب البحث بكلمة مختلفة أو قم بإلغاء الفلاتر المحددة لعرض كافة الملفات.'
+              : 'ابدأ الآن برفع ملفات المواصفات والكتالوجات والمخططات الهندسية بصيغ PDF أو Excel لتنظيمها وتسهيل مشاركتها.'}
           </p>
-          <button
-            onClick={() => {
-              setSearchQuery('');
-              setSelectedCategory('ALL');
-              setSelectedSubcategory('ALL');
-              setSelectedFileType('ALL');
-            }}
-            className="mt-4 px-4 py-2 text-xs font-semibold rounded-xl bg-secondary hover:bg-secondary/80 text-foreground transition-all"
-          >
-            إعادة ضبط الفلاتر
-          </button>
+
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            {(searchQuery || selectedCategory !== 'ALL' || selectedFileType !== 'ALL') ? (
+              <button
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedCategory('ALL');
+                  setSelectedSubcategory('ALL');
+                  setSelectedFileType('ALL');
+                }}
+                className="px-5 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-secondary hover:bg-secondary/80 text-foreground transition-all shadow-sm"
+              >
+                إعادة ضبط كافة الفلاتر
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  resetUploadForm();
+                  setIsUploadOpen(true);
+                }}
+                className="px-6 py-2.5 text-xs sm:text-sm font-bold rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground transition-all shadow-md shadow-primary/25 inline-flex items-center gap-2"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span>رفع أول ملف داتا شير الآن</span>
+              </button>
+            )}
+          </div>
         </div>
       ) : viewMode === 'grid' ? (
-        /* ── Grid View ── */
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        
+        /* ── Grid View Cards ── */
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5">
           {datasheets.map((file) => {
             const config = getFileTypeConfig(file.file_type, file.file_extension);
             const Icon = config.icon;
@@ -643,33 +752,33 @@ export default function DataSheetsPage() {
             return (
               <div
                 key={file.id}
-                className={`group bg-card border border-border/70 rounded-2xl p-4 flex flex-col justify-between hover:shadow-lg transition-all duration-200 ${config.cardGlow}`}
+                className={`group bg-card border border-border/80 rounded-2xl p-5 flex flex-col justify-between hover:shadow-xl transition-all duration-200 ${config.glow}`}
               >
                 <div>
-                  {/* Card Header: Icon + Type Badge + Actions */}
-                  <div className="flex items-start justify-between gap-2 mb-3">
+                  {/* Card Header: Type Badge + Original Ext + Actions */}
+                  <div className="flex items-start justify-between gap-2 mb-3.5">
                     <div className="flex items-center gap-2.5">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${config.badgeBg}`}>
+                      <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${config.badgeBg}`}>
                         <Icon className="w-5 h-5" />
                       </div>
                       <div className="min-w-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${config.badgeBg}`}>
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md border uppercase font-mono ${config.badgeBg}`}>
                           {config.label}
                         </span>
-                        <p className="text-[11px] text-muted-foreground font-mono mt-0.5">
+                        <p className="text-[11px] text-muted-foreground font-mono mt-0.5" dir="ltr">
                           {formatFileSize(file.file_size)}
                         </p>
                       </div>
                     </div>
 
-                    {/* Quick Menu Actions */}
+                    {/* Quick Menu */}
                     <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                       <button
                         onClick={() => openEditModal(file)}
-                        title="تعديل تفاصيل الملف"
+                        title="تعديل التفاصيل"
                         className="p-1.5 hover:bg-secondary rounded-lg text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        <Edit2 className="w-3.5 h-3.5" />
+                        <Edit3 className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={() => setDeleteConfirmId(file.id)}
@@ -682,41 +791,41 @@ export default function DataSheetsPage() {
                   </div>
 
                   {/* Title */}
-                  <h3 className="font-bold text-sm text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors mb-1.5">
+                  <h3 className="font-bold text-sm sm:text-base text-foreground line-clamp-2 leading-snug group-hover:text-primary transition-colors mb-1.5">
                     {file.title}
                   </h3>
 
                   {/* Original File Name */}
-                  <p className="text-[11px] text-muted-foreground font-mono truncate mb-3" title={file.original_name}>
+                  <p className="text-xs text-muted-foreground font-mono truncate mb-3" title={file.original_name} dir="ltr">
                     📎 {file.original_name}
                   </p>
 
                   {/* Category & Subcategory Tags */}
                   <div className="flex flex-wrap items-center gap-1.5 mb-3">
                     {file.category && (
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/25">
                         {file.category.name}
                       </span>
                     )}
                     {file.subcategory && (
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-secondary text-muted-foreground border border-border">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-secondary text-muted-foreground border border-border">
                         {file.subcategory.name}
                       </span>
                     )}
                   </div>
 
-                  {/* Description Snippet if present */}
+                  {/* Description snippet */}
                   {file.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3 bg-secondary/30 p-2 rounded-lg border border-border/40">
+                    <p className="text-xs text-muted-foreground line-clamp-2 mb-3 bg-secondary/30 p-2.5 rounded-xl border border-border/40 leading-relaxed">
                       {file.description}
                     </p>
                   )}
 
-                  {/* Tags if present */}
+                  {/* Tags */}
                   {file.tags && (
                     <div className="flex flex-wrap gap-1 mb-3">
                       {file.tags.split(',').map((tag, idx) => (
-                        <span key={idx} className="text-[9px] px-1.5 py-0.5 rounded bg-secondary/60 text-muted-foreground">
+                        <span key={idx} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-secondary/80 text-muted-foreground">
                           #{tag.trim()}
                         </span>
                       ))}
@@ -724,29 +833,26 @@ export default function DataSheetsPage() {
                   )}
                 </div>
 
-                {/* Card Footer: Metadata + Action Buttons */}
-                <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-2 mt-2">
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                    <Clock className="w-3 h-3" />
+                {/* Card Footer: Date + Actions */}
+                <div className="pt-3.5 border-t border-border/60 flex items-center justify-between gap-2 mt-2">
+                  <span className="text-[11px] text-muted-foreground flex items-center gap-1 font-medium">
+                    <Clock className="w-3 h-3 text-muted-foreground/80" />
                     {formatDate(file.created_at)}
                   </span>
 
                   <div className="flex items-center gap-1.5">
-                    {/* Preview / View button */}
                     <button
                       onClick={() => setPreviewFile(file)}
-                      title="معاينة الملف"
-                      className="px-2.5 py-1.5 rounded-lg bg-secondary hover:bg-secondary/80 text-foreground text-xs font-semibold flex items-center gap-1 transition-all"
+                      className="px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 text-foreground text-xs font-bold flex items-center gap-1 transition-all"
                     >
-                      <Eye className="w-3.5 h-3.5" />
+                      <Eye className="w-3.5 h-3.5 text-primary" />
                       <span>معاينة</span>
                     </button>
 
-                    {/* Download button */}
                     <button
                       onClick={() => handleDownload(file)}
                       title="تحميل الملف"
-                      className="p-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary transition-all"
+                      className="p-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary transition-all shadow-xs"
                     >
                       <Download className="w-4 h-4" />
                     </button>
@@ -757,19 +863,20 @@ export default function DataSheetsPage() {
           })}
         </div>
       ) : (
+        
         /* ── List / Table View ── */
-        <div className="bg-card border border-border/60 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-card border border-border/80 rounded-2xl overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs sm:text-sm">
-              <thead className="bg-secondary/40 border-b border-border text-muted-foreground text-[11px] uppercase tracking-wider font-semibold">
+              <thead className="bg-secondary/40 border-b border-border text-muted-foreground text-[11px] uppercase tracking-wider font-bold">
                 <tr>
-                  <th className="py-3 px-4">النوع</th>
-                  <th className="py-3 px-4">اسم الملف / العنوان</th>
-                  <th className="py-3 px-4">التصنيف الرئيسي</th>
-                  <th className="py-3 px-4">التصنيف الفرعي</th>
-                  <th className="py-3 px-4">الحجم</th>
-                  <th className="py-3 px-4">تاريخ الإضافة</th>
-                  <th className="py-3 px-4 text-center">الإجراءات</th>
+                  <th className="py-3.5 px-4">نوع الملف</th>
+                  <th className="py-3.5 px-4">اسم الملف / العنوان</th>
+                  <th className="py-3.5 px-4">التصنيف الرئيسي</th>
+                  <th className="py-3.5 px-4">التصنيف الفرعي</th>
+                  <th className="py-3.5 px-4">الحجم</th>
+                  <th className="py-3.5 px-4">تاريخ الإضافة</th>
+                  <th className="py-3.5 px-4 text-center">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">
@@ -779,31 +886,31 @@ export default function DataSheetsPage() {
 
                   return (
                     <tr key={file.id} className="hover:bg-secondary/30 transition-colors group">
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${config.badgeBg}`}>
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${config.badgeBg}`}>
                             <Icon className="w-4 h-4" />
                           </div>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${config.badgeBg}`}>
+                          <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border uppercase font-mono ${config.badgeBg}`}>
                             {config.label}
                           </span>
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td className="py-3.5 px-4">
                         <div className="max-w-xs sm:max-w-md">
                           <p className="font-bold text-foreground group-hover:text-primary transition-colors">
                             {file.title}
                           </p>
-                          <p className="text-[11px] text-muted-foreground font-mono truncate" title={file.original_name}>
+                          <p className="text-[11px] text-muted-foreground font-mono truncate" title={file.original_name} dir="ltr">
                             📎 {file.original_name}
                           </p>
                         </div>
                       </td>
 
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
                         {file.category ? (
-                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
+                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-md bg-primary/10 text-primary border border-primary/20">
                             {file.category.name}
                           </span>
                         ) : (
@@ -811,9 +918,9 @@ export default function DataSheetsPage() {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 whitespace-nowrap">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
                         {file.subcategory ? (
-                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-secondary text-muted-foreground border border-border">
+                          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-secondary text-muted-foreground border border-border">
                             {file.subcategory.name}
                           </span>
                         ) : (
@@ -821,22 +928,22 @@ export default function DataSheetsPage() {
                         )}
                       </td>
 
-                      <td className="py-3 px-4 font-mono text-muted-foreground whitespace-nowrap">
+                      <td className="py-3.5 px-4 font-mono text-muted-foreground whitespace-nowrap" dir="ltr">
                         {formatFileSize(file.file_size)}
                       </td>
 
-                      <td className="py-3 px-4 text-muted-foreground whitespace-nowrap text-xs">
+                      <td className="py-3.5 px-4 text-muted-foreground whitespace-nowrap text-xs font-medium">
                         {formatDate(file.created_at)}
                       </td>
 
-                      <td className="py-3 px-4 whitespace-nowrap text-center">
+                      <td className="py-3.5 px-4 whitespace-nowrap text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
                             onClick={() => setPreviewFile(file)}
                             className="p-1.5 hover:bg-secondary rounded-lg text-foreground transition-colors"
                             title="معاينة"
                           >
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-4 h-4 text-primary" />
                           </button>
                           <button
                             onClick={() => handleDownload(file)}
@@ -850,7 +957,7 @@ export default function DataSheetsPage() {
                             className="p-1.5 hover:bg-secondary text-muted-foreground hover:text-foreground rounded-lg transition-colors"
                             title="تعديل"
                           >
-                            <Edit2 className="w-4 h-4" />
+                            <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirmId(file.id)}
@@ -872,21 +979,21 @@ export default function DataSheetsPage() {
 
       {/* ── Modal 1: Upload New DataSheet ── */}
       <ModalPortal isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)}>
-        <div className="bg-card border border-border rounded-2xl w-full max-w-xl p-6 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
+        <div className="bg-card border border-border rounded-3xl w-full max-w-xl p-6 sm:p-7 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
           
-          <div className="flex items-center justify-between pb-3 border-b border-border">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                <Upload className="w-5 h-5" />
+          <div className="flex items-center justify-between pb-3.5 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                <UploadCloud className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-foreground">رفع ملف داتا شير جديد</h2>
-                <p className="text-xs text-muted-foreground">اختر الملف وحدد اسمه وتصنيفاته</p>
+                <h2 className="text-base sm:text-lg font-black text-foreground">رفع ملف داتا شير جديد</h2>
+                <p className="text-xs text-muted-foreground">اختر الملف وحدد اسمه وتصنيفاته الفنية</p>
               </div>
             </div>
             <button
               onClick={() => setIsUploadOpen(false)}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -894,9 +1001,9 @@ export default function DataSheetsPage() {
 
           <form onSubmit={handleUploadSubmit} className="space-y-4">
             
-            {/* Drag & Drop File Zone */}
+            {/* Drag & Drop File Box */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1.5 block">
+              <label className="text-xs font-bold text-foreground mb-1.5 block">
                 الملف المطلوب رفعه <span className="text-rose-500">*</span>
               </label>
               <div
@@ -911,7 +1018,7 @@ export default function DataSheetsPage() {
                 className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
                   uploadFile
                     ? 'border-primary/60 bg-primary/5'
-                    : 'border-border hover:border-primary/40 hover:bg-secondary/40'
+                    : 'border-border hover:border-primary/50 hover:bg-secondary/40'
                 }`}
               >
                 <input
@@ -927,14 +1034,14 @@ export default function DataSheetsPage() {
 
                 {uploadFile ? (
                   <div className="flex items-center justify-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary flex items-center justify-center">
-                      <File className="w-5 h-5" />
+                    <div className="w-11 h-11 rounded-xl bg-primary/20 text-primary flex items-center justify-center shrink-0">
+                      <File className="w-6 h-6" />
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-foreground truncate max-w-xs">
+                    <div className="text-right flex-1 min-w-0">
+                      <p className="text-sm font-bold text-foreground truncate">
                         {uploadFile.name}
                       </p>
-                      <p className="text-xs text-muted-foreground font-mono">
+                      <p className="text-xs text-muted-foreground font-mono mt-0.5" dir="ltr">
                         {formatFileSize(uploadFile.size)}
                       </p>
                     </div>
@@ -945,18 +1052,18 @@ export default function DataSheetsPage() {
                         setUploadFile(null);
                         if (fileInputRef.current) fileInputRef.current.value = '';
                       }}
-                      className="p-1 rounded-full hover:bg-rose-500/20 text-rose-500 mr-auto"
+                      className="p-1.5 rounded-full hover:bg-rose-500/20 text-rose-500"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center mx-auto text-muted-foreground">
-                      <Upload className="w-6 h-6" />
+                    <div className="w-12 h-12 rounded-2xl bg-secondary flex items-center justify-center mx-auto text-primary">
+                      <UploadCloud className="w-6 h-6" />
                     </div>
                     <p className="text-sm font-bold text-foreground">
-                      اسحب وأفلت الملف هنا، أو <span className="text-primary underline">استعرض الملفات</span>
+                      اسحب وأفلت الملف هنا، أو <span className="text-primary underline">استعرض جهازك</span>
                     </p>
                     <p className="text-[11px] text-muted-foreground">
                       يدعم ملفات PDF، Excel، Word، الصور، المخططات الهندسية (الحد الأقصى 50 ميغابايت)
@@ -966,25 +1073,25 @@ export default function DataSheetsPage() {
               </div>
             </div>
 
-            {/* File Name / Title */}
+            {/* Title */}
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1.5 block">
+              <label className="text-xs font-bold text-foreground mb-1.5 block">
                 اسم الملف / العنوان التوضيحي <span className="text-rose-500">*</span>
               </label>
               <input
                 type="text"
-                placeholder="مثال: داتا شيت محرك 50 ك.واط موديل 2026"
+                placeholder="مثال: داتا شيت محرك 50 ك.واط ثلاثي الطور"
                 value={uploadTitle}
                 onChange={(e) => setUploadTitle(e.target.value)}
                 required
-                className="w-full px-3.5 py-2.5 bg-secondary/40 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3.5 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
               />
             </div>
 
-            {/* Category & Subcategory Side by Side */}
+            {/* Category & Subcategory Selectors */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-foreground mb-1.5 block">
+                <label className="text-xs font-bold text-foreground mb-1.5 block">
                   التصنيف الرئيسي (Category)
                 </label>
                 <select
@@ -993,7 +1100,7 @@ export default function DataSheetsPage() {
                     setUploadCategoryId(e.target.value === '' ? '' : Number(e.target.value));
                     setUploadSubcategoryId('');
                   }}
-                  className="w-full px-3 py-2.5 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3.5 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
                 >
                   <option value="">-- بدون تصنيف رئيسي --</option>
                   {categories.map((c) => (
@@ -1005,14 +1112,14 @@ export default function DataSheetsPage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-foreground mb-1.5 block">
+                <label className="text-xs font-bold text-foreground mb-1.5 block">
                   التصنيف الفرعي (Subcategory)
                 </label>
                 <select
                   value={uploadSubcategoryId}
                   onChange={(e) => setUploadSubcategoryId(e.target.value === '' ? '' : Number(e.target.value))}
                   disabled={uploadAvailableSubcategories.length === 0}
-                  className="w-full px-3 py-2.5 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                  className="w-full px-3.5 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 cursor-pointer"
                 >
                   <option value="">
                     {uploadAvailableSubcategories.length === 0
@@ -1031,36 +1138,36 @@ export default function DataSheetsPage() {
             {/* Description & Tags */}
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-semibold text-foreground mb-1.5 block">
-                  الوصف / ملاحظات فنية حول الملف
+                <label className="text-xs font-bold text-foreground mb-1.5 block">
+                  الوصف / ملاحظات فنية
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="أدخل أي تفاصيل أو أرقام موديلات أو معلومات إضافية..."
+                  placeholder="أدخل أي أرقام موديلات أو معلومات إضافية عن الملف..."
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium leading-relaxed"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-foreground mb-1.5 block flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5 text-muted-foreground" />
+                <label className="text-xs font-bold text-foreground mb-1.5 block flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-primary" />
                   <span>الكلمات الدلالية للبحث (مفصولة بفواصل)</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="مثال: محرك، ثلاثي الطور، 380V، 2026"
+                  placeholder="مثال: محرك، 380V، 50Hz، كوري"
                   value={uploadTags}
                   onChange={(e) => setUploadTags(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
                 />
               </div>
             </div>
 
-            {/* Error banner */}
+            {/* Error Message */}
             {uploadError && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl text-xs flex items-center gap-2">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 rounded-xl text-xs flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{uploadError}</span>
               </div>
@@ -1068,33 +1175,33 @@ export default function DataSheetsPage() {
 
             {/* Progress Bar */}
             {uploadMutation.isPending && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-xs text-muted-foreground font-mono">
-                  <span>جاري الرفع...</span>
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-xs font-bold text-muted-foreground font-mono">
+                  <span>جاري الرفع والمعالجة...</span>
                   <span>{uploadProgress}%</span>
                 </div>
                 <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-primary transition-all duration-200"
+                    className="h-full bg-primary transition-all duration-150"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
               </div>
             )}
 
-            {/* Actions */}
+            {/* Modal Actions */}
             <div className="pt-2 flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setIsUploadOpen(false)}
-                className="px-4 py-2.5 rounded-xl border border-border text-xs sm:text-sm font-semibold hover:bg-secondary/70 transition-all"
+                className="px-4 py-2.5 rounded-xl border border-border text-xs sm:text-sm font-bold hover:bg-secondary/70 transition-all"
               >
                 إلغاء
               </button>
               <button
                 type="submit"
                 disabled={uploadMutation.isPending || !uploadFile}
-                className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-md shadow-primary/20 transition-all disabled:opacity-50"
+                className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-md shadow-primary/20 transition-all disabled:opacity-50"
               >
                 {uploadMutation.isPending ? 'جاري الرفع...' : 'رفع وحفظ الملف'}
               </button>
@@ -1105,12 +1212,12 @@ export default function DataSheetsPage() {
 
       {/* ── Modal 2: Edit DataSheet Details ── */}
       <ModalPortal isOpen={!!editingFile} onClose={() => setEditingFile(null)}>
-        <div className="bg-card border border-border rounded-2xl w-full max-w-lg p-6 shadow-2xl relative z-10 space-y-4 animate-in zoom-in-95 duration-150">
-          <div className="flex items-center justify-between pb-3 border-b border-border">
-            <h2 className="text-base font-bold text-foreground">تعديل تفاصيل الملف</h2>
+        <div className="bg-card border border-border rounded-3xl w-full max-w-lg p-6 sm:p-7 shadow-2xl relative z-10 space-y-4 animate-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between pb-3.5 border-b border-border">
+            <h2 className="text-base sm:text-lg font-black text-foreground">تعديل تفاصيل الملف</h2>
             <button
               onClick={() => setEditingFile(null)}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg"
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1118,26 +1225,26 @@ export default function DataSheetsPage() {
 
           <form onSubmit={handleEditSubmit} className="space-y-3.5">
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">اسم الملف / العنوان</label>
+              <label className="text-xs font-bold text-foreground mb-1 block">اسم الملف / العنوان</label>
               <input
                 type="text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 required
-                className="w-full px-3.5 py-2 bg-secondary/40 border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3.5 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
               />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-foreground mb-1 block">التصنيف الرئيسي</label>
+                <label className="text-xs font-bold text-foreground mb-1 block">التصنيف الرئيسي</label>
                 <select
                   value={editCategoryId}
                   onChange={(e) => {
                     setEditCategoryId(e.target.value === '' ? '' : Number(e.target.value));
                     setEditSubcategoryId('');
                   }}
-                  className="w-full px-3 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
                 >
                   <option value="">-- بدون تصنيف رئيسي --</option>
                   {categories.map((c) => (
@@ -1149,12 +1256,12 @@ export default function DataSheetsPage() {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-foreground mb-1 block">التصنيف الفرعي</label>
+                <label className="text-xs font-bold text-foreground mb-1 block">التصنيف الفرعي</label>
                 <select
                   value={editSubcategoryId}
                   onChange={(e) => setEditSubcategoryId(e.target.value === '' ? '' : Number(e.target.value))}
                   disabled={editAvailableSubcategories.length === 0}
-                  className="w-full px-3 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
+                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 cursor-pointer"
                 >
                   <option value="">-- بدون تصنيف فرعي --</option>
                   {editAvailableSubcategories.map((sub) => (
@@ -1167,30 +1274,30 @@ export default function DataSheetsPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">الوصف / ملاحظات</label>
+              <label className="text-xs font-bold text-foreground mb-1 block">الوصف / ملاحظات</label>
               <textarea
                 rows={2}
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
-                className="w-full px-3 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium leading-relaxed"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-foreground mb-1 block">الكلمات الدلالية (Tags)</label>
+              <label className="text-xs font-bold text-foreground mb-1 block">الكلمات الدلالية (Tags)</label>
               <input
                 type="text"
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
-                className="w-full px-3.5 py-2 bg-secondary/40 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium"
               />
             </div>
 
-            <div className="pt-2 flex items-center justify-end gap-2">
+            <div className="pt-2 flex items-center justify-end gap-2.5">
               <button
                 type="button"
                 onClick={() => setEditingFile(null)}
-                className="px-4 py-2 rounded-xl border border-border text-xs sm:text-sm font-semibold hover:bg-secondary/70 transition-all"
+                className="px-4 py-2 rounded-xl border border-border text-xs sm:text-sm font-bold hover:bg-secondary/70 transition-all"
               >
                 إلغاء
               </button>
@@ -1208,15 +1315,15 @@ export default function DataSheetsPage() {
 
       {/* ── Modal 3: Preview Modal ── */}
       <ModalPortal isOpen={!!previewFile} onClose={() => setPreviewFile(null)}>
-        <div className="bg-card border border-border rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col p-6 shadow-2xl relative z-10 animate-in zoom-in-95 duration-150">
+        <div className="bg-card border border-border rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col p-6 shadow-2xl relative z-10 animate-in zoom-in-95 duration-150">
           
           {/* Header */}
           <div className="flex items-center justify-between pb-4 border-b border-border shrink-0">
             <div>
-              <h2 className="text-base font-bold text-foreground truncate max-w-xl">
+              <h2 className="text-base sm:text-lg font-black text-foreground truncate max-w-xl">
                 {previewFile?.title}
               </h2>
-              <p className="text-xs text-muted-foreground font-mono mt-0.5">
+              <p className="text-xs text-muted-foreground font-mono mt-0.5" dir="ltr">
                 {previewFile?.original_name} • {formatFileSize(previewFile?.file_size || 0)}
               </p>
             </div>
@@ -1225,15 +1332,15 @@ export default function DataSheetsPage() {
               {previewFile && (
                 <button
                   onClick={() => handleDownload(previewFile)}
-                  className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold flex items-center gap-2 shadow-sm transition-all"
                 >
                   <Download className="w-4 h-4" />
-                  <span>تحميل</span>
+                  <span>تحميل الملف</span>
                 </button>
               )}
               <button
                 onClick={() => setPreviewFile(null)}
-                className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg"
+                className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1241,18 +1348,18 @@ export default function DataSheetsPage() {
           </div>
 
           {/* Body Viewer */}
-          <div className="flex-1 overflow-y-auto py-4 min-h-[400px] flex items-center justify-center bg-secondary/20 rounded-xl my-2">
+          <div className="flex-1 overflow-y-auto py-3 min-h-[420px] flex items-center justify-center bg-secondary/30 rounded-2xl my-2 border border-border/50">
             {previewFile?.file_type === 'pdf' ? (
               <iframe
                 src={`${previewFile.file_path}#toolbar=1`}
-                className="w-full h-[600px] rounded-lg border border-border"
+                className="w-full h-[620px] rounded-xl border border-border"
                 title={previewFile.title}
               />
             ) : previewFile?.file_type === 'image' ? (
               <img
                 src={previewFile.file_path}
                 alt={previewFile.title}
-                className="max-h-[600px] max-w-full object-contain rounded-lg shadow-sm"
+                className="max-h-[620px] max-w-full object-contain rounded-xl shadow-md"
               />
             ) : (
               <div className="text-center p-8 space-y-4">
@@ -1261,14 +1368,14 @@ export default function DataSheetsPage() {
                 </div>
                 <div>
                   <h4 className="text-base font-bold text-foreground">معاينة الملف المباشرة</h4>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                    هذا الملف بصيغة ({previewFile?.file_extension?.toUpperCase()}). يمكنك تنزيله مباشرة وعرضه في البرنامج المخصص له.
+                  <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto leading-relaxed">
+                    هذا الملف بصيغة ({previewFile?.file_extension?.toUpperCase()}). يمكنك تنزيله مباشرة بضغطة زر واحدة وعرضه عبر البرامج المكتبية.
                   </p>
                 </div>
                 {previewFile && (
                   <button
                     onClick={() => handleDownload(previewFile)}
-                    className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-bold shadow-md shadow-primary/20 transition-all inline-flex items-center gap-2"
+                    className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-md shadow-primary/20 transition-all inline-flex items-center gap-2"
                   >
                     <Download className="w-4 h-4" />
                     <span>تحميل الملف الآن ({formatFileSize(previewFile.file_size)})</span>
@@ -1282,28 +1389,28 @@ export default function DataSheetsPage() {
 
       {/* ── Modal 4: Category & Subcategory Management ── */}
       <ModalPortal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)}>
-        <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col p-6 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
+        <div className="bg-card border border-border rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col p-6 sm:p-7 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
           
-          <div className="flex items-center justify-between pb-3 border-b border-border shrink-0">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+          <div className="flex items-center justify-between pb-3.5 border-b border-border shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
                 <FolderTree className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-foreground">إدارة التصنيفات والتصنيفات الفرعية</h2>
-                <p className="text-xs text-muted-foreground">تنظيم شجرة الفئات لملفات الداتا شير</p>
+                <h2 className="text-base sm:text-lg font-black text-foreground">شجرة التصنيفات والفئات الفرعية</h2>
+                <p className="text-xs text-muted-foreground">تنظيم فئات ملفات الداتا شير والمواصفات</p>
               </div>
             </div>
             <button
               onClick={() => setIsCategoryModalOpen(false)}
-              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg"
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Add Category / Subcategory Form */}
-          <div className="bg-secondary/40 border border-border/80 p-4 rounded-xl space-y-3 shrink-0">
+          {/* Quick Add Form */}
+          <div className="bg-secondary/50 border border-border/80 p-4 rounded-2xl space-y-3 shrink-0">
             <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
               <FolderPlus className="w-4 h-4 text-primary" />
               <span>إضافة تصنيف جديد أو تصنيف فرعي</span>
@@ -1316,7 +1423,7 @@ export default function DataSheetsPage() {
                   placeholder="اسم التصنيف الجديد..."
                   value={newCatName}
                   onChange={(e) => setNewCatName(e.target.value)}
-                  className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3.5 py-2 bg-card border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
                 />
               </div>
 
@@ -1324,7 +1431,7 @@ export default function DataSheetsPage() {
                 <select
                   value={newCatParentId}
                   onChange={(e) => setNewCatParentId(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
                 >
                   <option value="">(تصنيف رئيسي جديد)</option>
                   {categories.map((c) => (
@@ -1345,33 +1452,34 @@ export default function DataSheetsPage() {
                       parent_id: newCatParentId ? Number(newCatParentId) : null,
                     });
                   }}
-                  className="w-full py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1"
+                  className="w-full py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-4 h-4" />
                   <span>إضافة</span>
                 </button>
               </div>
             </div>
 
             {catActionError && (
-              <p className="text-xs text-rose-500 font-medium">{catActionError}</p>
+              <p className="text-xs text-rose-500 font-bold">{catActionError}</p>
             )}
           </div>
 
-          {/* List of Existing Categories & Subcategories */}
+          {/* List of Existing Categories */}
           <div className="flex-1 overflow-y-auto space-y-3 pr-1">
             <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              التصنيفات الحالية في النظام ({categories.length})
+              التصنيفات المتاحة حالياً ({categories.length})
             </h4>
 
             {categories.length === 0 ? (
               <p className="text-xs text-muted-foreground text-center py-6">لا توجد تصنيفات بعد.</p>
             ) : (
               categories.map((cat) => (
-                <div key={cat.id} className="border border-border/80 rounded-xl overflow-hidden bg-card">
-                  {/* Category Row */}
-                  <div className="p-3 bg-secondary/30 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
+                <div key={cat.id} className="border border-border/80 rounded-2xl overflow-hidden bg-card shadow-xs">
+                  
+                  {/* Category Header */}
+                  <div className="p-3.5 bg-secondary/40 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
                       <Layers className="w-4 h-4 text-primary" />
                       <span className="text-sm font-bold text-foreground">{cat.name}</span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
@@ -1379,26 +1487,24 @@ export default function DataSheetsPage() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                        className="p-1 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 rounded-lg transition-colors"
-                        title="حذف التصنيف"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => deleteCategoryMutation.mutate(cat.id)}
+                      className="p-1.5 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 rounded-lg transition-colors"
+                      title="حذف التصنيف"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   {/* Subcategories */}
                   {cat.subcategories && cat.subcategories.length > 0 && (
-                    <div className="p-2.5 bg-card/50 divide-y divide-border/40">
+                    <div className="p-2.5 bg-card/60 divide-y divide-border/40">
                       {cat.subcategories.map((sub) => (
-                        <div key={sub.id} className="py-1.5 px-3 flex items-center justify-between text-xs">
+                        <div key={sub.id} className="py-2 px-3 flex items-center justify-between text-xs">
                           <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground/60 text-sm">↳</span>
-                            <span className="font-medium text-foreground">{sub.name}</span>
-                            <span className="text-[10px] text-muted-foreground">
+                            <span className="text-primary font-bold">↳</span>
+                            <span className="font-semibold text-foreground">{sub.name}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono">
                               ({sub.datasheets_count ?? 0} ملف)
                             </span>
                           </div>
@@ -1423,29 +1529,29 @@ export default function DataSheetsPage() {
 
       {/* ── Modal 5: Delete Confirmation ── */}
       <ModalPortal isOpen={!!deleteConfirmId} onClose={() => setDeleteConfirmId(null)}>
-        <div className="bg-card border border-border rounded-2xl w-full max-w-sm p-6 shadow-2xl relative z-10 text-center space-y-4 animate-in zoom-in-95 duration-150">
+        <div className="bg-card border border-border rounded-3xl w-full max-w-sm p-6 text-center space-y-4 shadow-2xl relative z-10 animate-in zoom-in-95 duration-150">
           <div className="w-12 h-12 rounded-2xl bg-rose-500/10 text-rose-600 flex items-center justify-center mx-auto">
             <AlertCircle className="w-6 h-6" />
           </div>
           <div>
             <h3 className="text-base font-bold text-foreground">تأكيد حذف الملف</h3>
-            <p className="text-xs text-muted-foreground mt-1">
-              هل أنت متأكد من حذف هذا الملف نهائياً؟ لا يمكن التراجع عن هذه العملية بعد الحذف.
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              هل أنت متأكد من رغبتك في حذف هذا الملف نهائياً من النظام؟ لا يمكن التراجع عن هذا الإجراء.
             </p>
           </div>
           <div className="flex items-center justify-center gap-2.5 pt-2">
             <button
               onClick={() => setDeleteConfirmId(null)}
-              className="px-4 py-2 rounded-xl border border-border text-xs sm:text-sm font-semibold hover:bg-secondary/70 transition-all"
+              className="px-4 py-2.5 rounded-xl border border-border text-xs sm:text-sm font-bold hover:bg-secondary/70 transition-all"
             >
               إلغاء
             </button>
             <button
               onClick={() => deleteConfirmId && deleteMutation.mutate(deleteConfirmId)}
               disabled={deleteMutation.isPending}
-              className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-rose-600/20 transition-all"
+              className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold shadow-md shadow-rose-600/20 transition-all"
             >
-              {deleteMutation.isPending ? 'جاري الحذف...' : 'نعم، حذف الملف'}
+              {deleteMutation.isPending ? 'جاري الحذف...' : 'نعم، تأكيد الحذف'}
             </button>
           </div>
         </div>
