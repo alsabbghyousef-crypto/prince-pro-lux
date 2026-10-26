@@ -123,7 +123,9 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const handleLogout = async () => {
     try { await api.post('/logout'); } catch { /* ignore */ }
+    localStorage.removeItem('prince_token');
     localStorage.removeItem('Prince Pro Lux_token');
+    localStorage.removeItem('newpower_token');
     navigate('/login');
   };
 

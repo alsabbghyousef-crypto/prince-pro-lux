@@ -12,7 +12,7 @@ const api = axios.create({
 
 // Interceptor for Auth Token
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('newpower_token');
+  const token = localStorage.getItem('prince_token') || localStorage.getItem('Prince Pro Lux_token') || localStorage.getItem('newpower_token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -24,6 +24,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
+      localStorage.removeItem('prince_token');
+      localStorage.removeItem('Prince Pro Lux_token');
       localStorage.removeItem('newpower_token');
       if (window.location.pathname !== '/login') {
         window.location.href = '/login';

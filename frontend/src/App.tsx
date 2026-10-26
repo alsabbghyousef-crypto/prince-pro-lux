@@ -25,7 +25,7 @@ const PageLoader = () => (
 );
 
 function App() {
-  const isAuthenticated = !!localStorage.getItem('newpower_token');
+  const isAuthenticated = !!(localStorage.getItem('prince_token') || localStorage.getItem('Prince Pro Lux_token') || localStorage.getItem('newpower_token'));
 
   return (
     <div dir="rtl" className="rtl">

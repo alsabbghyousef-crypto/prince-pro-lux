@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { LogIn, Lock, User, AlertCircle, Loader2 } from 'lucide-react';
 import { authService } from '../services/api';
@@ -17,7 +17,9 @@ const LoginPage: React.FC = () => {
     try {
       const response = await authService.login({ email, password });
       const { token } = response.data;
+      localStorage.setItem('prince_token', token);
       localStorage.setItem('newpower_token', token);
+      localStorage.setItem('Prince Pro Lux_token', token);
       window.location.href = '/dashboard';
     } catch (err: any) {
       setError(err.response?.data?.message || 'فشل تسجيل الدخول. يرجى التحقق من البيانات.');
@@ -62,7 +64,7 @@ const LoginPage: React.FC = () => {
                   <input
                     id="email"
                     type="text"
-                    placeholder="name@example.com"
+                    placeholder="ahmad@princeprolux.com"
                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-9 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-all duration-200"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -122,43 +124,9 @@ const LoginPage: React.FC = () => {
             </button>
           </form>
 
-          <div className="pt-4 border-t border-border/50 mt-4">
-            <p className="text-xs text-muted-foreground text-center mb-3">تسجيل الدخول السريع — كلمة السر: <span className="font-mono font-bold text-foreground">12345678</span></p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              <button
-                type="button"
-                onClick={() => { setEmail('basel@newpower.com'); setPassword('12345678'); }}
-                className="text-xs bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-3 py-1.5 rounded-md transition-colors font-bold"
-              >
-                👑 باسل (مدير)
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail('mohamed@newpower.com'); setPassword('12345678'); }}
-                className="text-xs bg-secondary/50 hover:bg-secondary text-secondary-foreground px-3 py-1.5 rounded-md transition-colors"
-              >
-                🧾 محمد (بائع)
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail('seller@newpower.com'); setPassword('12345678'); }}
-                className="text-xs bg-secondary/50 hover:bg-secondary text-secondary-foreground px-3 py-1.5 rounded-md transition-colors"
-              >
-                🛒 موظف مبيعات
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail('obeada@newpower.com'); setPassword('12345678'); }}
-                className="text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 border border-amber-500/20 px-3 py-1.5 rounded-md transition-colors font-bold"
-              >
-                🍳 عبيدة (مطبخ)
-              </button>
-            </div>
-          </div>
-
           <div className="text-center mt-6">
             <p className="text-xs text-muted-foreground">
-              NEWPOWER POS - Vercel Edition v2.0
+              Prince Pro Lux POS v2.0
             </p>
           </div>
         </div>

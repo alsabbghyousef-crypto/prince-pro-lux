@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 namespace Database\Seeders;
 
@@ -22,30 +22,30 @@ class DatabaseSeeder extends Seeder
 
         // Create Users
         User::create([
-            'name' => 'باسل (مدير)',
-            'email' => 'basel@newpower.com',
-            'password' => Hash::make('12345678'),
+            'name' => 'أحمد (المدير)',
+            'email' => 'ahmad@princeprolux.com',
+            'password' => Hash::make('123456'),
             'role' => 'ADMIN',
         ]);
 
         User::create([
             'name' => 'محمد (بائع)',
-            'email' => 'mohamed@newpower.com',
-            'password' => Hash::make('12345678'),
+            'email' => 'mohamed@princeprolux.com',
+            'password' => Hash::make('123456'),
             'role' => 'SELLER',
         ]);
 
         User::create([
             'name' => 'موظف مبيعات',
-            'email' => 'seller@newpower.com',
-            'password' => Hash::make('12345678'),
+            'email' => 'seller@princeprolux.com',
+            'password' => Hash::make('123456'),
             'role' => 'SELLER',
         ]);
 
         User::create([
             'name' => 'عبيدة (مطبخ)',
-            'email' => 'obeada@newpower.com',
-            'password' => Hash::make('12345678'),
+            'email' => 'obeada@princeprolux.com',
+            'password' => Hash::make('123456'),
             'role' => 'CHEF',
         ]);
 
