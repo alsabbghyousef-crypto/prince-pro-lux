@@ -132,13 +132,20 @@ class DataSheetController extends Controller
         $fileType = $this->detectFileType($extension);
 
         $destinationPath = public_path('uploads/datasheets');
-        if (!File::isDirectory($destinationPath)) {
-            File::makeDirectory($destinationPath, 0777, true, true);
-        }
+        try {
+            if (!File::isDirectory($destinationPath)) {
+                File::makeDirectory($destinationPath, 0777, true, true);
+            }
 
-        $safeFileName = time() . '_' . uniqid() . '.' . $extension;
-        $uploadedFile->move($destinationPath, $safeFileName);
-        $filePath = '/uploads/datasheets/' . $safeFileName;
+            $safeFileName = time() . '_' . uniqid() . '.' . $extension;
+            $uploadedFile->move($destinationPath, $safeFileName);
+            $filePath = '/uploads/datasheets/' . $safeFileName;
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('DataSheet Upload Error: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'فشل حفظ الملف على الخادم: ' . $e->getMessage()
+            ], 500);
+        }
 
         $datasheet = DataSheet::create([
             'title' => $request->title,
@@ -202,12 +209,19 @@ class DataSheetController extends Controller
             $fileType = $this->detectFileType($extension);
 
             $destinationPath = public_path('uploads/datasheets');
-            if (!File::isDirectory($destinationPath)) {
-                File::makeDirectory($destinationPath, 0777, true, true);
-            }
+            try {
+                if (!File::isDirectory($destinationPath)) {
+                    File::makeDirectory($destinationPath, 0777, true, true);
+                }
 
-            $safeFileName = time() . '_' . uniqid() . '.' . $extension;
-            $uploadedFile->move($destinationPath, $safeFileName);
+                $safeFileName = time() . '_' . uniqid() . '.' . $extension;
+                $uploadedFile->move($destinationPath, $safeFileName);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('DataSheet Update Upload Error: ' . $e->getMessage());
+                return response()->json([
+                    'message' => 'فشل حفظ الملف على الخادم: ' . $e->getMessage()
+                ], 500);
+            }
 
             $data['original_name'] = $originalName;
             $data['file_path'] = '/uploads/datasheets/' . $safeFileName;

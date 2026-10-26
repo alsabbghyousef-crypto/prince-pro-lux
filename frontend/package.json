@@ -10,7 +10,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@cyntler/react-doc-viewer": "^1.17.1",
     "@tanstack/react-query": "^5.102.8",
     "axios": "^1.15.2",
     "clsx": "^2.1.1",

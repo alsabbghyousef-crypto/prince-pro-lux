@@ -31,9 +31,10 @@ if [ "$DB_CONNECTION" = "sqlite" ] || [ -z "$DB_CONNECTION" ]; then
 fi
 
 # Ensure uploads directory permissions
-mkdir -p /var/www/backend/public/uploads
+mkdir -p /var/www/backend/public/uploads/datasheets
+mkdir -p /var/www/backend/public/uploads/products
 chown -R www-data:www-data /var/www/backend/public/uploads
-chmod -R 775 /var/www/backend/public/uploads
+chmod -R 777 /var/www/backend/public/uploads
 
 # Create storage symlink
 php artisan storage:link --force || true

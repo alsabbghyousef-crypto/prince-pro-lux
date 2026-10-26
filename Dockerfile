@@ -56,8 +56,8 @@ COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Set permissions
-RUN chown -R www-data:www-data /var/www/backend/storage /var/www/backend/bootstrap/cache \
-    && chmod -R 775 /var/www/backend/storage /var/www/backend/bootstrap/cache
+RUN chown -R www-data:www-data /var/www/backend/storage /var/www/backend/bootstrap/cache /var/www/backend/public \
+    && chmod -R 775 /var/www/backend/storage /var/www/backend/bootstrap/cache /var/www/backend/public
 
 EXPOSE 80
 
