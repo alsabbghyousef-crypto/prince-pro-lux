@@ -27,6 +27,8 @@ use App\Http\Controllers\Api\DataSheetCategoryController;
 // Public (no auth)
 // ─────────────────────────────────────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/datasheets/{id}/preview', [DataSheetController::class, 'preview']);
+Route::get('/datasheets/{id}/download', [DataSheetController::class, 'download']);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Protected (Sanctum auth required for all routes below)
@@ -49,7 +51,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('products',   ProductController::class);
 
     // ── DataSheets / File Sharing ──────────────────────────────────────────────
-    Route::get('/datasheets/{id}/download', [DataSheetController::class, 'download']);
     Route::apiResource('datasheets', DataSheetController::class);
     Route::apiResource('datasheet-categories', DataSheetCategoryController::class);
 

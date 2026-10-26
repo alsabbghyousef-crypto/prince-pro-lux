@@ -250,4 +250,39 @@ class DataSheetController extends Controller
 
         return response()->download($fullPath, $datasheet->original_name);
     }
+
+    public function preview($id)
+    {
+        $datasheet = DataSheet::findOrFail($id);
+        $fullPath = public_path($datasheet->file_path);
+
+        if (!File::exists($fullPath)) {
+            return response()->json(['message' => 'الملف غير موجود على الخادم.'], 404);
+        }
+
+        $ext = strtolower($datasheet->file_extension);
+        $mimeType = match ($ext) {
+            'pdf' => 'application/pdf',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'webp' => 'image/webp',
+            'svg' => 'image/svg+xml',
+            'txt' => 'text/plain; charset=utf-8',
+            'json' => 'application/json',
+            'csv' => 'text/csv; charset=utf-8',
+            'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'xls' => 'application/vnd.ms-excel',
+            'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'doc' => 'application/msword',
+            default => File::mimeType($fullPath) ?: 'application/octet-stream',
+        };
+
+        return response()->file($fullPath, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . rawurlencode($datasheet->original_name) . '"',
+            'Access-Control-Allow-Origin' => '*',
+            'X-Frame-Options' => 'ALLOWALL',
+        ]);
+    }
 }

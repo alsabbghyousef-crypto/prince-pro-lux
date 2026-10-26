@@ -29,6 +29,7 @@ import api from '../services/api';
 import ModalPortal from '../components/ui/ModalPortal';
 import ViewToggle from '../components/ui/ViewToggle';
 import SearchableSelect from '../components/ui/SearchableSelect';
+import UniversalFileViewer from '../components/datasheet/UniversalFileViewer';
 import type { DataSheet, DataSheetCategory, DataSheetStats } from '../types/datasheet';
 
 // Formats file sizes safely without RTL reversal issues
@@ -1346,7 +1347,7 @@ export default function DataSheetsPage() {
 
       {/* ── Modal 3: Preview Modal ── */}
       <ModalPortal isOpen={!!previewFile} onClose={() => setPreviewFile(null)}>
-        <div className="bg-card border border-border rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col p-6 shadow-2xl relative z-10 animate-in zoom-in-95 duration-150">
+        <div className="bg-card border border-border rounded-3xl w-full max-w-5xl h-[88vh] flex flex-col p-5 sm:p-6 shadow-2xl relative z-10 animate-in zoom-in-95 duration-150">
           
           {/* Header */}
           <div className="flex items-center justify-between pb-4 border-b border-border shrink-0">
@@ -1379,40 +1380,12 @@ export default function DataSheetsPage() {
           </div>
 
           {/* Body Viewer */}
-          <div className="flex-1 overflow-y-auto py-3 min-h-[420px] flex items-center justify-center bg-secondary/30 rounded-2xl my-2 border border-border/50">
-            {previewFile?.file_type === 'pdf' ? (
-              <iframe
-                src={`${previewFile.file_path}#toolbar=1`}
-                className="w-full h-[620px] rounded-xl border border-border"
-                title={previewFile.title}
+          <div className="flex-1 overflow-y-auto py-2 min-h-[480px] flex flex-col">
+            {previewFile && (
+              <UniversalFileViewer
+                file={previewFile}
+                onDownload={() => handleDownload(previewFile)}
               />
-            ) : previewFile?.file_type === 'image' ? (
-              <img
-                src={previewFile.file_path}
-                alt={previewFile.title}
-                className="max-h-[620px] max-w-full object-contain rounded-xl shadow-md"
-              />
-            ) : (
-              <div className="text-center p-8 space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto text-primary">
-                  <FileSpreadsheet className="w-8 h-8" />
-                </div>
-                <div>
-                  <h4 className="text-base font-bold text-foreground">معاينة الملف المباشرة</h4>
-                  <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto leading-relaxed">
-                    هذا الملف بصيغة ({previewFile?.file_extension?.toUpperCase()}). يمكنك تنزيله مباشرة بضغطة زر واحدة وعرضه عبر البرامج المكتبية.
-                  </p>
-                </div>
-                {previewFile && (
-                  <button
-                    onClick={() => handleDownload(previewFile)}
-                    className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-md shadow-primary/20 transition-all inline-flex items-center gap-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>تحميل الملف الآن ({formatFileSize(previewFile.file_size)})</span>
-                  </button>
-                )}
-              </div>
             )}
           </div>
         </div>
