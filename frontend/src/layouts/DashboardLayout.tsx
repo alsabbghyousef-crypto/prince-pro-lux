@@ -17,6 +17,7 @@ import {
   Menu,
   FileText,
   Package,
+  FileSpreadsheet,
   Loader2,
   UserCog,
   
@@ -167,6 +168,7 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
         <NavItem icon={ShoppingCart} label="نقطة البيع (POS)" to="/dashboard/sales" />
         <NavItem icon={FileText} label="سجل المبيعات" to="/dashboard/orders" />
         <NavItem icon={Package} label="المنتجات والمخزون" to="/dashboard/items" />
+        <NavItem icon={FileSpreadsheet} label="ملفات الداتا شير" to="/dashboard/datasheets" />
         <NavItem icon={Users} label="العملاء والديون" to="/dashboard/customers" />
         
         {isAdmin && (

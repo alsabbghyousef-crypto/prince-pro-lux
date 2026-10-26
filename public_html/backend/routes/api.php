@@ -20,6 +20,8 @@ use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\PayrollController;
+use App\Http\Controllers\Api\DataSheetController;
+use App\Http\Controllers\Api\DataSheetCategoryController;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public (no auth)
@@ -45,6 +47,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('products/bulk', [ProductController::class, 'bulkStore']);
     Route::post('products/bulk-delete', [ProductController::class, 'bulkDelete']);
     Route::apiResource('products',   ProductController::class);
+
+    // ── DataSheets / File Sharing ──────────────────────────────────────────────
+    Route::get('/datasheets/{id}/download', [DataSheetController::class, 'download']);
+    Route::apiResource('datasheets', DataSheetController::class);
+    Route::apiResource('datasheet-categories', DataSheetCategoryController::class);
 
     // ── Inventory ──────────────────────────────────────────────────────────────
     Route::apiResource('inventory', InventoryController::class)
