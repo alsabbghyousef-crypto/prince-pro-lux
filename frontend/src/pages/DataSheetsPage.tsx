@@ -23,11 +23,12 @@ import {
   FileCode,
   Tag,
   Clock,
-  ArrowUpDown
+  Check
 } from 'lucide-react';
 import api from '../services/api';
 import ModalPortal from '../components/ui/ModalPortal';
 import ViewToggle from '../components/ui/ViewToggle';
+import SearchableSelect from '../components/ui/SearchableSelect';
 import type { DataSheet, DataSheetCategory, DataSheetStats } from '../types/datasheet';
 
 // Formats file sizes safely without RTL reversal issues
@@ -154,8 +155,11 @@ export default function DataSheetsPage() {
   const [editTags, setEditTags] = useState('');
 
   // Category Manager State
+  const [categoryAddMode, setCategoryAddMode] = useState<'main' | 'sub'>('main');
   const [newCatName, setNewCatName] = useState('');
   const [newCatParentId, setNewCatParentId] = useState<number | ''>('');
+  const [inlineSubCatParentId, setInlineSubCatParentId] = useState<number | null>(null);
+  const [inlineSubCatName, setInlineSubCatName] = useState('');
   const [catActionError, setCatActionError] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -209,6 +213,31 @@ export default function DataSheetsPage() {
     const cat = categories.find((c) => c.id === Number(editCategoryId));
     return cat?.subcategories || [];
   }, [categories, editCategoryId]);
+
+  // Options for Category SearchableSelects
+  const categoryOptions = useMemo(() => {
+    return categories.map((c) => ({
+      value: c.id,
+      label: c.name,
+      badge: `${c.datasheets_count ?? 0} ملف`,
+    }));
+  }, [categories]);
+
+  const uploadSubcategoryOptions = useMemo(() => {
+    return uploadAvailableSubcategories.map((s) => ({
+      value: s.id,
+      label: s.name,
+      badge: `${s.datasheets_count ?? 0} ملف`,
+    }));
+  }, [uploadAvailableSubcategories]);
+
+  const editSubcategoryOptions = useMemo(() => {
+    return editAvailableSubcategories.map((s) => ({
+      value: s.id,
+      label: s.name,
+      badge: `${s.datasheets_count ?? 0} ملف`,
+    }));
+  }, [editAvailableSubcategories]);
 
   // 3. Upload Mutation
   const uploadMutation = useMutation({
@@ -270,6 +299,8 @@ export default function DataSheetsPage() {
       queryClient.invalidateQueries({ queryKey: ['datasheet-categories'] });
       setNewCatName('');
       setNewCatParentId('');
+      setInlineSubCatParentId(null);
+      setInlineSubCatName('');
       setCatActionError('');
     },
     onError: (err: any) => {
@@ -376,7 +407,6 @@ export default function DataSheetsPage() {
       
       {/* ── 1. Hero Header Banner ── */}
       <div className="relative overflow-hidden bg-card border border-border/80 rounded-3xl p-6 sm:p-7 shadow-sm">
-        {/* Decorative background glow */}
         <div className="absolute top-0 right-0 w-96 h-96 bg-[#f97316]/5 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -507,7 +537,7 @@ export default function DataSheetsPage() {
               className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1"
             >
               <FolderPlus className="w-3.5 h-3.5" />
-              <span>+ إضافة فئة</span>
+              <span>+ إدارة وإضافة فئات</span>
             </button>
           </div>
 
@@ -560,7 +590,7 @@ export default function DataSheetsPage() {
           </div>
         </div>
 
-        {/* Subcategories Row (Expands smoothly when a main category with subcategories is chosen) */}
+        {/* Subcategories Row */}
         {activeSubcategories.length > 0 && (
           <div className="pt-3 border-t border-border/50 space-y-2 animate-in fade-in duration-200">
             <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
@@ -628,24 +658,26 @@ export default function DataSheetsPage() {
             )}
           </div>
 
-          {/* Right Controls: Sort Dropdown & View Mode */}
+          {/* Right Controls: Themed Searchable Sort Dropdown & View Mode */}
           <div className="flex items-center gap-2.5 w-full md:w-auto shrink-0 justify-between md:justify-start">
             
-            {/* Sort Selector */}
-            <div className="flex items-center gap-2 px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs font-semibold text-muted-foreground">
-              <ArrowUpDown className="w-3.5 h-3.5 text-primary shrink-0" />
-              <select
+            {/* Themed Searchable Sort Dropdown */}
+            <div className="w-44 shrink-0">
+              <SearchableSelect
+                options={[
+                  { value: 'latest', label: 'الأحدث إضافة' },
+                  { value: 'oldest', label: 'الأقدم إضافة' },
+                  { value: 'title_asc', label: 'الاسم (أ - ي)' },
+                  { value: 'title_desc', label: 'الاسم (ي - أ)' },
+                  { value: 'size_desc', label: 'الأكبر حجماً' },
+                  { value: 'size_asc', label: 'الأصغر حجماً' },
+                ]}
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="bg-transparent text-foreground font-bold focus:outline-none cursor-pointer text-xs"
-              >
-                <option value="latest">الأحدث إضافة</option>
-                <option value="oldest">الأقدم إضافة</option>
-                <option value="title_asc">الاسم (أ - ي)</option>
-                <option value="title_desc">الاسم (ي - أ)</option>
-                <option value="size_desc">الأكبر حجماً</option>
-                <option value="size_asc">الأصغر حجماً</option>
-              </select>
+                onChange={(val) => setSortBy(String(val))}
+                placeholder="ترتيب حسب..."
+                searchPlaceholder="بحث في الترتيب..."
+                buttonClassName="h-10 rounded-xl px-3 text-xs font-bold bg-secondary/50"
+              />
             </div>
 
             {/* View Toggle */}
@@ -977,7 +1009,7 @@ export default function DataSheetsPage() {
         </div>
       )}
 
-      {/* ── Modal 1: Upload New DataSheet ── */}
+      {/* ── Modal 1: Upload New DataSheet (With Searchable Themed Dropdowns) ── */}
       <ModalPortal isOpen={isUploadOpen} onClose={() => setIsUploadOpen(false)}>
         <div className="bg-card border border-border rounded-3xl w-full max-w-xl p-6 sm:p-7 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
           
@@ -1088,50 +1120,51 @@ export default function DataSheetsPage() {
               />
             </div>
 
-            {/* Category & Subcategory Selectors */}
+            {/* Searchable Themed Category & Subcategory Selectors */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-bold text-foreground mb-1.5 block">
-                  التصنيف الرئيسي (Category)
+                <label className="text-xs font-bold text-foreground mb-1.5 block flex items-center justify-between">
+                  <span>التصنيف الرئيسي (Category)</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsCategoryModalOpen(true)}
+                    className="text-[10px] text-primary hover:underline font-bold"
+                  >
+                    + فئة جديدة
+                  </button>
                 </label>
-                <select
+                <SearchableSelect
+                  options={categoryOptions}
                   value={uploadCategoryId}
-                  onChange={(e) => {
-                    setUploadCategoryId(e.target.value === '' ? '' : Number(e.target.value));
+                  onChange={(val) => {
+                    setUploadCategoryId(val ? Number(val) : '');
                     setUploadSubcategoryId('');
                   }}
-                  className="w-full px-3.5 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                >
-                  <option value="">-- بدون تصنيف رئيسي --</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="اختر التصنيف الرئيسي..."
+                  searchPlaceholder="ابحث في التصنيفات..."
+                  clearable
+                />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-foreground mb-1.5 block">
                   التصنيف الفرعي (Subcategory)
                 </label>
-                <select
+                <SearchableSelect
+                  options={uploadSubcategoryOptions}
                   value={uploadSubcategoryId}
-                  onChange={(e) => setUploadSubcategoryId(e.target.value === '' ? '' : Number(e.target.value))}
-                  disabled={uploadAvailableSubcategories.length === 0}
-                  className="w-full px-3.5 py-2.5 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 cursor-pointer"
-                >
-                  <option value="">
-                    {uploadAvailableSubcategories.length === 0
+                  onChange={(val) => setUploadSubcategoryId(val ? Number(val) : '')}
+                  placeholder={
+                    !uploadCategoryId
                       ? 'اختر تصنيف رئيسي أولاً'
-                      : '-- بدون تصنيف فرعي --'}
-                  </option>
-                  {uploadAvailableSubcategories.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name}
-                    </option>
-                  ))}
-                </select>
+                      : uploadAvailableSubcategories.length === 0
+                      ? 'لا توجد فئات فرعية'
+                      : 'اختر التصنيف الفرعي...'
+                  }
+                  searchPlaceholder="ابحث في التصنيفات الفرعية..."
+                  disabled={!uploadCategoryId || uploadAvailableSubcategories.length === 0}
+                  clearable
+                />
               </div>
             </div>
 
@@ -1210,7 +1243,7 @@ export default function DataSheetsPage() {
         </div>
       </ModalPortal>
 
-      {/* ── Modal 2: Edit DataSheet Details ── */}
+      {/* ── Modal 2: Edit DataSheet Details (With Searchable Themed Dropdowns) ── */}
       <ModalPortal isOpen={!!editingFile} onClose={() => setEditingFile(null)}>
         <div className="bg-card border border-border rounded-3xl w-full max-w-lg p-6 sm:p-7 shadow-2xl relative z-10 space-y-4 animate-in zoom-in-95 duration-150">
           <div className="flex items-center justify-between pb-3.5 border-b border-border">
@@ -1238,38 +1271,36 @@ export default function DataSheetsPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-bold text-foreground mb-1 block">التصنيف الرئيسي</label>
-                <select
+                <SearchableSelect
+                  options={categoryOptions}
                   value={editCategoryId}
-                  onChange={(e) => {
-                    setEditCategoryId(e.target.value === '' ? '' : Number(e.target.value));
+                  onChange={(val) => {
+                    setEditCategoryId(val ? Number(val) : '');
                     setEditSubcategoryId('');
                   }}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                >
-                  <option value="">-- بدون تصنيف رئيسي --</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="اختر التصنيف الرئيسي..."
+                  searchPlaceholder="ابحث في التصنيفات..."
+                  clearable
+                />
               </div>
 
               <div>
                 <label className="text-xs font-bold text-foreground mb-1 block">التصنيف الفرعي</label>
-                <select
+                <SearchableSelect
+                  options={editSubcategoryOptions}
                   value={editSubcategoryId}
-                  onChange={(e) => setEditSubcategoryId(e.target.value === '' ? '' : Number(e.target.value))}
-                  disabled={editAvailableSubcategories.length === 0}
-                  className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50 cursor-pointer"
-                >
-                  <option value="">-- بدون تصنيف فرعي --</option>
-                  {editAvailableSubcategories.map((sub) => (
-                    <option key={sub.id} value={sub.id}>
-                      {sub.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(val) => setEditSubcategoryId(val ? Number(val) : '')}
+                  placeholder={
+                    !editCategoryId
+                      ? 'اختر تصنيف رئيسي أولاً'
+                      : editAvailableSubcategories.length === 0
+                      ? 'لا توجد فئات فرعية'
+                      : 'اختر التصنيف الفرعي...'
+                  }
+                  searchPlaceholder="ابحث في التصنيفات الفرعية..."
+                  disabled={!editCategoryId || editAvailableSubcategories.length === 0}
+                  clearable
+                />
               </div>
             </div>
 
@@ -1279,7 +1310,7 @@ export default function DataSheetsPage() {
                 rows={2}
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
-                className="w-full px-3 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium leading-relaxed"
+                className="w-full px-3.5 py-2 bg-secondary/50 border border-border rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 font-medium leading-relaxed"
               />
             </div>
 
@@ -1387,7 +1418,7 @@ export default function DataSheetsPage() {
         </div>
       </ModalPortal>
 
-      {/* ── Modal 4: Category & Subcategory Management ── */}
+      {/* ── Modal 4: Category & Subcategory Management (Ultra Usable & Intuitive) ── */}
       <ModalPortal isOpen={isCategoryModalOpen} onClose={() => setIsCategoryModalOpen(false)}>
         <div className="bg-card border border-border rounded-3xl w-full max-w-2xl max-h-[85vh] flex flex-col p-6 sm:p-7 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
           
@@ -1398,7 +1429,7 @@ export default function DataSheetsPage() {
               </div>
               <div>
                 <h2 className="text-base sm:text-lg font-black text-foreground">شجرة التصنيفات والفئات الفرعية</h2>
-                <p className="text-xs text-muted-foreground">تنظيم فئات ملفات الداتا شير والمواصفات</p>
+                <p className="text-xs text-muted-foreground">تنظيم فئات ملفات الداتا شير والمواصفات بسهولة تامة</p>
               </div>
             </div>
             <button
@@ -1409,63 +1440,146 @@ export default function DataSheetsPage() {
             </button>
           </div>
 
-          {/* Quick Add Form */}
-          <div className="bg-secondary/50 border border-border/80 p-4 rounded-2xl space-y-3 shrink-0">
-            <h3 className="text-xs font-bold text-foreground flex items-center gap-1.5">
-              <FolderPlus className="w-4 h-4 text-primary" />
-              <span>إضافة تصنيف جديد أو تصنيف فرعي</span>
-            </h3>
+          {/* Intuitive Segmented Add Form */}
+          <div className="bg-secondary/50 border border-border/80 p-4 sm:p-5 rounded-2xl space-y-4 shrink-0">
+            
+            {/* Mode Toggle Pills: Main Category vs Subcategory */}
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <FolderPlus className="w-4 h-4 text-primary" />
+                <span>إضافة جديدة:</span>
+              </span>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-              <div className="sm:col-span-5">
-                <input
-                  type="text"
-                  placeholder="اسم التصنيف الجديد..."
-                  value={newCatName}
-                  onChange={(e) => setNewCatName(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-card border border-border rounded-xl text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
-              </div>
-
-              <div className="sm:col-span-4">
-                <select
-                  value={newCatParentId}
-                  onChange={(e) => setNewCatParentId(e.target.value === '' ? '' : Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-card border border-border rounded-xl text-xs sm:text-sm font-bold focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer"
-                >
-                  <option value="">(تصنيف رئيسي جديد)</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      تصنيف فرعي تابع لـ: {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="sm:col-span-3">
+              <div className="inline-flex p-1 bg-background/80 border border-border/80 rounded-xl">
                 <button
                   type="button"
-                  disabled={!newCatName.trim() || createCategoryMutation.isPending}
                   onClick={() => {
-                    createCategoryMutation.mutate({
-                      name: newCatName.trim(),
-                      parent_id: newCatParentId ? Number(newCatParentId) : null,
-                    });
+                    setCategoryAddMode('main');
+                    setNewCatParentId('');
                   }}
-                  className="w-full py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    categoryAddMode === 'main'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>إضافة</span>
+                  📁 تصنيف رئيسي جديد
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCategoryAddMode('sub')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    categoryAddMode === 'sub'
+                      ? 'bg-primary text-primary-foreground shadow-xs'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  ↳ تصنيف فرعي تابع
                 </button>
               </div>
             </div>
 
+            {/* Form Fields based on Mode */}
+            {categoryAddMode === 'main' ? (
+              
+              /* Mode A: Main Category */
+              <div className="flex flex-col sm:flex-row gap-2.5">
+                <input
+                  type="text"
+                  placeholder="اسم التصنيف الرئيسي الجديد (مثال: محركات كهربائية، أنظمة تحكم...)"
+                  value={newCatName}
+                  onChange={(e) => setNewCatName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newCatName.trim()) {
+                      e.preventDefault();
+                      createCategoryMutation.mutate({ name: newCatName.trim(), parent_id: null });
+                    }
+                  }}
+                  className="flex-1 px-3.5 py-2.5 bg-background border border-border rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+
+                <button
+                  type="button"
+                  disabled={!newCatName.trim() || createCategoryMutation.isPending}
+                  onClick={() => {
+                    createCategoryMutation.mutate({ name: newCatName.trim(), parent_id: null });
+                  }}
+                  className="px-5 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs sm:text-sm font-bold shadow-md shadow-primary/20 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span>إضافة التصنيف</span>
+                </button>
+              </div>
+            ) : (
+              
+              /* Mode B: Subcategory (With Searchable Orange Dropdown) */
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="text-[11px] font-bold text-muted-foreground mb-1 block">
+                      اختر التصنيف الرئيسي الأب:
+                    </label>
+                    <SearchableSelect
+                      options={categoryOptions}
+                      value={newCatParentId}
+                      onChange={(val) => setNewCatParentId(val ? Number(val) : '')}
+                      placeholder="ابحث واختر التصنيف الأب..."
+                      searchPlaceholder="بحث في التصنيفات الرئيسية..."
+                      buttonClassName="h-10 rounded-xl px-3 bg-background border border-border text-xs font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-bold text-muted-foreground mb-1 block">
+                      اسم التصنيف الفرعي الجديد:
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="مثال: محركات تيار مستمر DC..."
+                        value={newCatName}
+                        onChange={(e) => setNewCatName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newCatName.trim() && newCatParentId) {
+                            e.preventDefault();
+                            createCategoryMutation.mutate({
+                              name: newCatName.trim(),
+                              parent_id: Number(newCatParentId),
+                            });
+                          }
+                        }}
+                        className="flex-1 px-3.5 py-2 bg-background border border-border rounded-xl text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20 h-10"
+                      />
+
+                      <button
+                        type="button"
+                        disabled={!newCatName.trim() || !newCatParentId || createCategoryMutation.isPending}
+                        onClick={() => {
+                          createCategoryMutation.mutate({
+                            name: newCatName.trim(),
+                            parent_id: Number(newCatParentId),
+                          });
+                        }}
+                        className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 transition-all disabled:opacity-50 flex items-center justify-center gap-1 shrink-0 h-10"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>إضافة</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {catActionError && (
-              <p className="text-xs text-rose-500 font-bold">{catActionError}</p>
+              <p className="text-xs text-rose-500 font-bold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{catActionError}</span>
+              </p>
             )}
           </div>
 
-          {/* List of Existing Categories */}
+          {/* List of Existing Categories with Direct Inline Subcategory Add */}
           <div className="flex-1 overflow-y-auto space-y-3 pr-1">
             <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
               التصنيفات المتاحة حالياً ({categories.length})
@@ -1480,23 +1594,85 @@ export default function DataSheetsPage() {
                   {/* Category Header */}
                   <div className="p-3.5 bg-secondary/40 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <Layers className="w-4 h-4 text-primary" />
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold">
+                        <Layers className="w-4 h-4" />
+                      </div>
                       <span className="text-sm font-bold text-foreground">{cat.name}</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary font-mono">
                         {cat.datasheets_count ?? 0} ملف
                       </span>
                     </div>
 
-                    <button
-                      onClick={() => deleteCategoryMutation.mutate(cat.id)}
-                      className="p-1.5 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 rounded-lg transition-colors"
-                      title="حذف التصنيف"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {/* Direct inline subcategory adder trigger */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setInlineSubCatParentId(inlineSubCatParentId === cat.id ? null : cat.id);
+                          setInlineSubCatName('');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-background hover:bg-secondary text-primary border border-primary/20 text-xs font-bold flex items-center gap-1 transition-all"
+                        title="إضافة فرع سريع تحت هذا التصنيف"
+                      >
+                        <Plus className="w-3 h-3 stroke-[3]" />
+                        <span>+ إضافة فرع هنا</span>
+                      </button>
+
+                      <button
+                        onClick={() => deleteCategoryMutation.mutate(cat.id)}
+                        className="p-1.5 hover:bg-rose-500/10 text-muted-foreground hover:text-rose-600 rounded-lg transition-colors"
+                        title="حذف التصنيف بالكامل"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Subcategories */}
+                  {/* Inline Subcategory Input if Active */}
+                  {inlineSubCatParentId === cat.id && (
+                    <div className="p-3 bg-primary/5 border-t border-primary/20 flex items-center gap-2 animate-in fade-in duration-150">
+                      <span className="text-xs font-bold text-primary shrink-0">↳ اسم الفرع:</span>
+                      <input
+                        autoFocus
+                        type="text"
+                        placeholder="مثال: فئة فرعية جديدة..."
+                        value={inlineSubCatName}
+                        onChange={(e) => setInlineSubCatName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && inlineSubCatName.trim()) {
+                            createCategoryMutation.mutate({
+                              name: inlineSubCatName.trim(),
+                              parent_id: cat.id,
+                            });
+                          }
+                        }}
+                        className="flex-1 px-3 py-1.5 bg-background border border-border rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      />
+                      <button
+                        type="button"
+                        disabled={!inlineSubCatName.trim() || createCategoryMutation.isPending}
+                        onClick={() => {
+                          createCategoryMutation.mutate({
+                            name: inlineSubCatName.trim(),
+                            parent_id: cat.id,
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:bg-primary/90 transition-all flex items-center gap-1 disabled:opacity-50"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>حفظ</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInlineSubCatParentId(null)}
+                        className="px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Subcategories List */}
                   {cat.subcategories && cat.subcategories.length > 0 && (
                     <div className="p-2.5 bg-card/60 divide-y divide-border/40">
                       {cat.subcategories.map((sub) => (
