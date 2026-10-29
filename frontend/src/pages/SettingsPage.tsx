@@ -16,6 +16,34 @@ import {
 } from 'lucide-react';
 import api from '../services/api';
 
+// Dedicated RTL Switch component (OFF on the right, ON slides to the left)
+const RTLSwitch: React.FC<{
+  checked: boolean;
+  onChange: () => void;
+  activeColor?: string;
+}> = ({ checked, onChange, activeColor = 'bg-primary' }) => {
+  return (
+    <div
+      onClick={e => {
+        e.stopPropagation();
+        onChange();
+      }}
+      dir="rtl"
+      role="switch"
+      aria-checked={checked}
+      className={`w-11 h-6 flex items-center rounded-full p-1 cursor-pointer transition-colors duration-200 ease-in-out flex-shrink-0 select-none relative ${
+        checked ? activeColor : 'bg-zinc-300 dark:bg-zinc-700'
+      }`}
+    >
+      <div
+        className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-200 ease-in-out ${
+          checked ? '-translate-x-5' : 'translate-x-0'
+        }`}
+      />
+    </div>
+  );
+};
+
 interface SettingsState {
   exchange_rate: string;
   pos_default_currency: 'USD' | 'SYP';
@@ -105,7 +133,6 @@ const SettingsPage: React.FC = () => {
         cartAutosave: settings.cart_autosave,
       });
 
-      // Also persist POS client-side settings to localStorage for immediate effect
       localStorage.setItem('prince_pos_currency', settings.pos_default_currency);
       localStorage.setItem('prince_receipt_size', settings.receipt_paper_size);
       localStorage.setItem('prince_sound_fx', settings.sound_effects_enabled ? '1' : '0');
@@ -281,9 +308,11 @@ const SettingsPage: React.FC = () => {
                   <span className="text-xs font-bold">
                     {settings.pos_allow_negative_stock ? 'مسموح بالبيع (رصيد سالب)' : 'غير مسموح (إيقاف البيع)'}
                   </span>
-                  <div className={`w-8 h-4 rounded-full transition-colors relative ${settings.pos_allow_negative_stock ? 'bg-amber-500' : 'bg-muted-foreground/30'}`}>
-                    <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.pos_allow_negative_stock ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </div>
+                  <RTLSwitch
+                    checked={settings.pos_allow_negative_stock}
+                    onChange={() => setSettings({ ...settings, pos_allow_negative_stock: !settings.pos_allow_negative_stock })}
+                    activeColor="bg-amber-500"
+                  />
                 </div>
                 <p className="text-[10px] text-muted-foreground">منع أو إتاحة إتمام الطلبات في حال كانت الكمية بالمستودع صفراً.</p>
               </div>
@@ -342,9 +371,11 @@ const SettingsPage: React.FC = () => {
                   <span className="text-xs font-bold">
                     {settings.receipt_auto_print ? 'مفعلة (طباعة فورية)' : 'معطلة (طباعة يدوية)'}
                   </span>
-                  <div className={`w-8 h-4 rounded-full transition-colors relative ${settings.receipt_auto_print ? 'bg-blue-600' : 'bg-muted-foreground/30'}`}>
-                    <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.receipt_auto_print ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </div>
+                  <RTLSwitch
+                    checked={settings.receipt_auto_print}
+                    onChange={() => setSettings({ ...settings, receipt_auto_print: !settings.receipt_auto_print })}
+                    activeColor="bg-blue-600"
+                  />
                 </div>
                 <p className="text-[10px] text-muted-foreground">فتح شاشة الطباعة فوراً بعد الضغط على تأكيد الطلب.</p>
               </div>
@@ -359,9 +390,11 @@ const SettingsPage: React.FC = () => {
                     <p className="text-xs font-black text-foreground">إظهار السعر بالدولار والليرة السورية معاً في الفاتورة</p>
                     <p className="text-[10px] text-muted-foreground">طباعة إجمالي الفاتورة بالعملتين لتسهيل المحاسبة مع الزبون.</p>
                   </div>
-                  <div className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.receipt_show_dual_currency ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
-                    <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.receipt_show_dual_currency ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                  </div>
+                  <RTLSwitch
+                    checked={settings.receipt_show_dual_currency}
+                    onChange={() => setSettings({ ...settings, receipt_show_dual_currency: !settings.receipt_show_dual_currency })}
+                    activeColor="bg-primary"
+                  />
                 </div>
               </div>
 
@@ -468,9 +501,11 @@ const SettingsPage: React.FC = () => {
                     <p className="text-[10px] text-muted-foreground">تشغيل نغمة تأكيد لطيفة عند مسح الباركود وإتمام البيع بنجاح.</p>
                   </div>
                 </div>
-                <div className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.sound_effects_enabled ? 'bg-purple-600' : 'bg-muted-foreground/30'}`}>
-                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.sound_effects_enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </div>
+                <RTLSwitch
+                  checked={settings.sound_effects_enabled}
+                  onChange={() => setSettings({ ...settings, sound_effects_enabled: !settings.sound_effects_enabled })}
+                  activeColor="bg-purple-600"
+                />
               </div>
 
               {/* Confirm Order Cancel */}
@@ -485,9 +520,11 @@ const SettingsPage: React.FC = () => {
                     <p className="text-[10px] text-muted-foreground">إظهار نافذة تأكيد تحذيرية لحماية الكاشير من مسح الطلبات بالخطأ.</p>
                   </div>
                 </div>
-                <div className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.confirm_order_cancel ? 'bg-purple-600' : 'bg-muted-foreground/30'}`}>
-                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.confirm_order_cancel ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </div>
+                <RTLSwitch
+                  checked={settings.confirm_order_cancel}
+                  onChange={() => setSettings({ ...settings, confirm_order_cancel: !settings.confirm_order_cancel })}
+                  activeColor="bg-purple-600"
+                />
               </div>
 
               {/* Cart Autosave */}
@@ -502,9 +539,11 @@ const SettingsPage: React.FC = () => {
                     <p className="text-[10px] text-muted-foreground">استعادة محتويات السلة تلقائياً في حال انقطاع التصفح أو تحديث الصفحة.</p>
                   </div>
                 </div>
-                <div className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.cart_autosave ? 'bg-purple-600' : 'bg-muted-foreground/30'}`}>
-                  <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.cart_autosave ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                </div>
+                <RTLSwitch
+                  checked={settings.cart_autosave}
+                  onChange={() => setSettings({ ...settings, cart_autosave: !settings.cart_autosave })}
+                  activeColor="bg-purple-600"
+                />
               </div>
             </div>
           </div>
