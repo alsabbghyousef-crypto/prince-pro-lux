@@ -36,6 +36,13 @@ mkdir -p /var/www/backend/public/uploads/products
 chown -R www-data:www-data /var/www/backend/public
 chmod -R 777 /var/www/backend/public
 
+# Ensure storage directory & log permissions
+mkdir -p /var/www/backend/storage/logs /var/www/backend/storage/framework/views /var/www/backend/storage/framework/cache /var/www/backend/storage/framework/sessions
+touch /var/www/backend/storage/logs/laravel.log
+chown -R www-data:www-data /var/www/backend/storage
+chmod -R 777 /var/www/backend/storage
+chmod 666 /var/www/backend/storage/logs/laravel.log
+
 # Ensure nginx body/fastcgi temp directories exist with full permissions
 mkdir -p /tmp/client_body /tmp/fastcgi_temp /tmp/proxy_temp /var/lib/nginx/tmp/client_body /var/lib/nginx/tmp/fastcgi
 chown -R www-data:www-data /tmp/client_body /tmp/fastcgi_temp /tmp/proxy_temp /var/lib/nginx
@@ -54,6 +61,10 @@ php artisan db:seed --force || true
 php artisan config:cache || true
 php artisan route:cache || true
 php artisan view:cache || true
+
+# Final storage permission fix after artisan commands
+chown -R www-data:www-data /var/www/backend/storage
+chmod -R 777 /var/www/backend/storage
 
 echo "Application prepared successfully. Starting Nginx and PHP-FPM..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

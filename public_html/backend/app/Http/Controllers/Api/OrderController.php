@@ -375,5 +375,4 @@ public function destroy(Order $order)
 
         return response()->json(['message' => 'تم الحذف بنجاح']);
     }
-}\Illuminate\Support\Facades\Log::info('Returning item:', );
-            
+}
