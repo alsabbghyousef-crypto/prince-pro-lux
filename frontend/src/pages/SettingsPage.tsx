@@ -3,7 +3,6 @@ import {
   Save, 
   Loader2, 
   DollarSign, 
-  Wallet, 
   CheckCircle2, 
   AlertCircle, 
   ShoppingCart, 
@@ -19,8 +18,6 @@ import api from '../services/api';
 
 interface SettingsState {
   exchange_rate: string;
-  treasury_usd: string;
-  treasury_syp: string;
   pos_default_currency: 'USD' | 'SYP';
   pos_default_payment: 'CASH' | 'DEBT';
   pos_allow_negative_stock: boolean;
@@ -42,8 +39,6 @@ const SettingsPage: React.FC = () => {
 
   const [settings, setSettings] = useState<SettingsState>({
     exchange_rate: '13800',
-    treasury_usd: '0',
-    treasury_syp: '0',
     pos_default_currency: 'USD',
     pos_default_payment: 'CASH',
     pos_allow_negative_stock: false,
@@ -69,8 +64,6 @@ const SettingsPage: React.FC = () => {
       const data = res.data;
       setSettings({
         exchange_rate: String(data.exchangeRate || 13800),
-        treasury_usd: String(data.treasury?.usd || 0),
-        treasury_syp: String(data.treasury?.syp || 0),
         pos_default_currency: data.posDefaultCurrency || 'USD',
         pos_default_payment: data.posDefaultPayment || 'CASH',
         pos_allow_negative_stock: Boolean(data.posAllowNegativeStock),
@@ -117,7 +110,7 @@ const SettingsPage: React.FC = () => {
       localStorage.setItem('prince_receipt_size', settings.receipt_paper_size);
       localStorage.setItem('prince_sound_fx', settings.sound_effects_enabled ? '1' : '0');
 
-      setMessage({ type: 'success', text: 'تم حفظ كافة الإعدادات الجديدة بنجاح' });
+      setMessage({ type: 'success', text: 'تم حفظ كافة الإعدادات بنجاح' });
       setTimeout(() => setMessage(null), 3500);
       fetchSettings();
     } catch (err) {
@@ -138,7 +131,7 @@ const SettingsPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fade-in pb-24">
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-28">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-border/40">
         <div className="flex items-center gap-3">
@@ -148,7 +141,7 @@ const SettingsPage: React.FC = () => {
           <div>
             <h1 className="text-2xl font-black tracking-tight">إعدادات النظام</h1>
             <p className="text-muted-foreground text-xs sm:text-sm font-medium">
-              التحكم في قواعد نقطة البيع (POS)، خيارات الفواتير والطباعة، وضبط أسعار العملات
+              التحكم في قواعد نقطة البيع (POS)، خيارات الفواتير والطباعة، وضبط أسعار الصرف
             </p>
           </div>
         </div>
@@ -175,10 +168,10 @@ const SettingsPage: React.FC = () => {
         </div>
       )}
 
-      <form onSubmit={handleSave} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <form onSubmit={handleSave} className="space-y-6">
         
-        {/* Main Settings Sections (2 Columns) */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Modern 2-Column Grid of Settings Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
           {/* 1. POS & Sales Operations Card */}
           <div className="vercel-card space-y-5 border border-border/60 shadow-sm">
@@ -192,7 +185,7 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-4">
               {/* Default Currency */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-muted-foreground uppercase">العملة الافتراضية عند البيع</label>
@@ -309,7 +302,7 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-4">
               {/* Paper Size */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-muted-foreground uppercase">قياس ورق الفاتورة الافتراضي</label>
@@ -357,14 +350,14 @@ const SettingsPage: React.FC = () => {
               </div>
 
               {/* Show Dual Currency on Receipt */}
-              <div className="md:col-span-2 space-y-2">
+              <div className="space-y-2">
                 <div 
                   onClick={() => setSettings({ ...settings, receipt_show_dual_currency: !settings.receipt_show_dual_currency })}
                   className="p-3.5 rounded-xl border border-border/60 bg-secondary/20 flex items-center justify-between cursor-pointer hover:bg-secondary/30 transition-all"
                 >
                   <div className="space-y-0.5">
                     <p className="text-xs font-black text-foreground">إظهار السعر بالدولار والليرة السورية معاً في الفاتورة</p>
-                    <p className="text-[10px] text-muted-foreground">طباعة إجمالي الفاتورة بالعملتين لتسهيل المحاسبة مع الزبون على سعر الصرف الحالي.</p>
+                    <p className="text-[10px] text-muted-foreground">طباعة إجمالي الفاتورة بالعملتين لتسهيل المحاسبة مع الزبون.</p>
                   </div>
                   <div className={`w-8 h-4 rounded-full transition-colors relative flex-shrink-0 ${settings.receipt_show_dual_currency ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
                     <div className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${settings.receipt_show_dual_currency ? 'translate-x-4' : 'translate-x-0.5'}`} />
@@ -373,7 +366,7 @@ const SettingsPage: React.FC = () => {
               </div>
 
               {/* Receipt Footer Note */}
-              <div className="md:col-span-2 space-y-2">
+              <div className="space-y-2">
                 <label className="text-[11px] font-black text-muted-foreground uppercase">الملاحظة التذييلية للفاتورة (Footer Note)</label>
                 <div className="relative">
                   <textarea
@@ -401,7 +394,7 @@ const SettingsPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-4">
               {/* Exchange Rate */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-muted-foreground uppercase">سعر صرف الدولار الحالي (ل.س)</label>
@@ -451,7 +444,7 @@ const SettingsPage: React.FC = () => {
           </div>
 
           {/* 4. Experience & Security Card */}
-          <div className="vercel-card space-y-4 border border-border/60 shadow-sm">
+          <div className="vercel-card space-y-5 border border-border/60 shadow-sm">
             <div className="flex items-center gap-2.5 pb-3 border-b border-border/50">
               <div className="p-1.5 bg-purple-500/10 rounded-xl text-purple-600">
                 <ShieldCheck className="w-5 h-5" />
@@ -518,57 +511,17 @@ const SettingsPage: React.FC = () => {
 
         </div>
 
-        {/* Right Sidebar Column (1 Column) */}
-        <div className="space-y-6">
-
-          {/* Treasury Balances Card */}
-          <div className="vercel-card space-y-6 bg-secondary/15 border-dashed border-2 border-primary/20 shadow-sm relative overflow-hidden">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-primary/10 rounded-xl text-primary">
-                <Wallet className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="font-black text-sm uppercase tracking-wider">أرصدة الخزينة الحالية</h3>
-                <p className="text-[10px] text-muted-foreground">السيولة النقدية المتوفرة في الصندوق</p>
-              </div>
-            </div>
-            
-            <div className="space-y-1.5 bg-background/60 p-4 rounded-2xl border border-border/50">
-              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">الليرة السورية (SYP)</label>
-              <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight">
-                {new Intl.NumberFormat('en-US').format(Number(settings.treasury_syp))} <span className="text-xs font-bold text-muted-foreground">ل.س</span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 bg-background/60 p-4 rounded-2xl border border-border/50">
-              <label className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">الدولار الأمريكي (USD)</label>
-              <div className="text-2xl font-black text-blue-600 dark:text-blue-400 font-mono tracking-tight">
-                ${new Intl.NumberFormat('en-US').format(Number(settings.treasury_usd))}
-              </div>
-            </div>
-
-            <div className="p-3.5 bg-background/80 rounded-2xl border border-border/50 space-y-1">
-              <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-bold">
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>حساب الأرصدة تلقائي ومباشر</span>
-              </div>
-              <p className="text-[10px] leading-relaxed text-muted-foreground">
-                يتم تحديث الرصيد آلياً مع كل عملية بيع نقدي، سند قبض، أو مصروف مسجل.
-              </p>
-            </div>
+        {/* Bottom Save Action Bar */}
+        <div className="p-4 rounded-2xl bg-secondary/20 border border-border/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="text-center sm:text-right">
+            <p className="text-xs font-black text-foreground">Prince Pro Lux POS Settings</p>
+            <p className="text-[10px] text-muted-foreground">يتم حفظ هذه التفضيلات وتطبيقها فوراً على واجهة الكاشير ونظام الطباعة</p>
           </div>
 
-          {/* Quick System Badge */}
-          <div className="p-4 rounded-2xl bg-primary/5 border border-primary/10 space-y-1 text-center">
-            <p className="text-xs font-black text-primary">Prince Pro Lux POS</p>
-            <p className="text-[10px] text-muted-foreground">الإصدار المعتمد v2.4 - نظام نقاط البيع والمستودعات</p>
-          </div>
-
-          {/* Big Save Button */}
           <button 
             type="submit" 
             disabled={saving}
-            className="w-full vercel-button bg-primary text-primary-foreground h-14 text-base font-black shadow-xl shadow-primary/25 hover:shadow-primary/40 active:scale-[0.98] transition-all flex items-center justify-center gap-3 rounded-2xl"
+            className="w-full sm:w-auto min-w-[220px] vercel-button bg-primary text-primary-foreground h-13 px-8 text-base font-black shadow-xl shadow-primary/25 hover:shadow-primary/40 active:scale-[0.98] transition-all flex items-center justify-center gap-3 rounded-xl"
           >
             {saving ? (
               <>
