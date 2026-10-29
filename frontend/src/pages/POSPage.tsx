@@ -35,6 +35,7 @@ interface Product {
 
 interface CartItem extends Product {
   quantity: number;
+  originalPrice?: number;
 }
 
 const SuccessOverlay: React.FC<{
@@ -226,7 +227,7 @@ const POSPage = () => {
         showToast(`لا يوجد مخزون كافٍ من ${product.name}. المتوفر: ${product.stock}`);
         return prev;
       }
-      return [...prev, { ...product, quantity: 1 }];
+      return [...prev, { ...product, quantity: 1, originalPrice: product.price }];
     });
   };
 
@@ -242,6 +243,42 @@ const POSPage = () => {
       }
       return item;
     }).filter(item => item.quantity > 0));
+  };
+
+  const updateItemPrice = (id: string, newPrice: number) => {
+    const safePrice = Math.max(0, isNaN(newPrice) ? 0 : newPrice);
+    setCart(prev => {
+      const updated = prev.map(item =>
+        item.id === id ? { ...item, price: safePrice } : item
+      );
+      if (isCheckoutOpen) {
+        const checkedTotal = updated.reduce((sum, item) => {
+          return sum + ((itemPaidStatus[item.id] ?? true) ? item.price * item.quantity : 0);
+        }, 0);
+        let disc = 0;
+        if (discountType === 'FIXED') {
+          disc = Number(discountValue) || 0;
+        } else if (discountType === 'PERCENTAGE') {
+          disc = (checkedTotal * (Number(discountValue) || 0)) / 100;
+        }
+        const newGrandTotal = Math.max(0, checkedTotal - disc);
+        if (!paidUsd || Number(paidUsd) === 0) {
+          setPaidSyp(String(Math.round(newGrandTotal * currentExchangeRate)));
+        } else {
+          const remainingUsd = Math.max(0, newGrandTotal - Number(paidUsd));
+          setPaidSyp(String(Math.round(remainingUsd * currentExchangeRate)));
+        }
+      }
+      return updated;
+    });
+  };
+
+  const updateItemTotalPrice = (id: string, newTotal: number) => {
+    const safeTotal = Math.max(0, isNaN(newTotal) ? 0 : newTotal);
+    const targetItem = cart.find(i => i.id === id);
+    if (!targetItem || targetItem.quantity <= 0) return;
+    const newUnitPrice = Number((safeTotal / targetItem.quantity).toFixed(2));
+    updateItemPrice(id, newUnitPrice);
   };
 
   const filteredProducts = React.useMemo(() => {
@@ -657,8 +694,33 @@ const POSPage = () => {
                 className="flex items-center gap-3 bg-secondary/20 p-3 rounded-xl border border-border/50 relative group"
               >
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-sm truncate pr-6">{item.name}</h4>
-                  <p className="text-muted-foreground text-xs">{new Intl.NumberFormat('en-US').format(item.price)} USD</p>
+                  <h4 className="font-bold text-sm truncate pr-6" title={item.name}>{item.name}</h4>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[11px] font-semibold text-muted-foreground">سعر القطعة:</span>
+                    <div className="relative inline-flex items-center">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={item.price === 0 ? '' : item.price}
+                        placeholder="0"
+                        onChange={(e) => updateItemPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                        className="w-16 h-6 px-1.5 text-xs font-black bg-background border border-border/80 focus:border-primary rounded outline-none text-primary text-center"
+                        title="تعديل سعر القطعة"
+                      />
+                      <span className="text-[10px] font-bold text-muted-foreground me-1">$</span>
+                    </div>
+                    {item.originalPrice !== undefined && item.price !== item.originalPrice && (
+                      <button
+                        type="button"
+                        onClick={() => updateItemPrice(item.id, item.originalPrice!)}
+                        className="text-[10px] text-primary hover:underline font-semibold"
+                        title={`استعادة السعر الأصلي: ${item.originalPrice}$`}
+                      >
+                        ({item.originalPrice}$)
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="flex flex-col items-end gap-2">
@@ -794,21 +856,107 @@ const POSPage = () => {
                   </div>
                 </div>
 
-                {/* Items Paid Checklist */}
-                <div className="bg-secondary/20 p-4 rounded-xl border border-border space-y-2">
-                  <p className="text-xs font-bold text-muted-foreground uppercase mb-2">القطع والمحاسبة</p>
+                {/* Items Paid Checklist & Custom Pricing */}
+                <div className="bg-secondary/20 p-4 rounded-xl border border-border space-y-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs font-bold text-muted-foreground uppercase">القطع والمحاسبة</p>
+                    <span className="text-[11px] text-primary/80 font-bold">يمكنك تحديد/تعديل سعر أي منتج هنا</span>
+                  </div>
                   {cart.map(item => (
-                    <div key={item.id} className="flex justify-between items-center text-sm p-2 bg-background rounded-lg border border-border">
-                      <div className="flex items-center gap-3">
+                    <div 
+                      key={item.id} 
+                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-background rounded-xl border border-border/80 hover:border-primary/40 transition-colors shadow-sm"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <input 
                           type="checkbox" 
-                          className="w-4 h-4 accent-primary"
+                          className="w-4 h-4 accent-primary cursor-pointer shrink-0"
                           checked={itemPaidStatus[item.id] ?? true}
                           onChange={(e) => handleItemCheck(item.id, e.target.checked)}
+                          title="حالة المحاسبة"
                         />
-                        <span className="font-medium">{item.name} × {item.quantity}</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-foreground truncate" title={item.name}>
+                            {item.name}
+                          </p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="inline-flex items-center text-xs font-bold text-muted-foreground bg-secondary/60 px-2 py-0.5 rounded-md">
+                              الكمية: {item.quantity}
+                            </span>
+                            {item.originalPrice !== undefined && item.price !== item.originalPrice && (
+                              <button
+                                type="button"
+                                onClick={() => updateItemPrice(item.id, item.originalPrice!)}
+                                className="text-[11px] text-primary hover:underline font-semibold"
+                                title={`استعادة السعر الأصلي: ${item.originalPrice}$`}
+                              >
+                                (الأصلي: {item.originalPrice}$)
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <span className="font-bold">{new Intl.NumberFormat('en-US').format(item.price * item.quantity)} USD</span>
+
+                      {/* Pricing Section */}
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                        {item.quantity > 1 ? (
+                          <div className="flex items-center gap-2">
+                            {/* Unit Price */}
+                            <div className="flex items-center gap-1.5 bg-secondary/40 px-2.5 py-1.5 rounded-lg border border-border/70">
+                              <span className="text-xs font-bold text-muted-foreground">للقطعة:</span>
+                              <div className="relative inline-flex items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={item.price === 0 ? '' : item.price}
+                                  placeholder="0"
+                                  onChange={(e) => updateItemPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                  className="w-16 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 text-xs font-black text-primary outline-none text-center"
+                                  title="تعديل سعر القطعة الواحدة"
+                                />
+                                <span className="text-[11px] font-bold text-muted-foreground me-1">$</span>
+                              </div>
+                            </div>
+
+                            {/* Total for this line */}
+                            <div className="flex items-center gap-1.5 bg-secondary/40 px-2.5 py-1.5 rounded-lg border border-border/70">
+                              <span className="text-xs font-bold text-muted-foreground">الإجمالي:</span>
+                              <div className="relative inline-flex items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={(item.price * item.quantity) === 0 ? '' : Number((item.price * item.quantity).toFixed(2))}
+                                  placeholder="0"
+                                  onChange={(e) => updateItemTotalPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                  className="w-20 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 text-xs font-black text-foreground outline-none text-center"
+                                  title="تعديل إجمالي سعر البند"
+                                />
+                                <span className="text-[11px] font-bold text-muted-foreground me-1">$</span>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          /* Single item price */
+                          <div className="flex items-center gap-1.5 bg-secondary/40 px-3 py-1.5 rounded-lg border border-border/70">
+                            <span className="text-xs font-bold text-muted-foreground">السعر:</span>
+                            <div className="relative inline-flex items-center">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={item.price === 0 ? '' : item.price}
+                                placeholder="0"
+                                onChange={(e) => updateItemPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                className="w-24 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-2 py-1 text-sm font-black text-primary outline-none text-center"
+                                title="تحديد سعر هذا المنتج"
+                              />
+                              <span className="text-xs font-bold text-muted-foreground me-1">USD</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
