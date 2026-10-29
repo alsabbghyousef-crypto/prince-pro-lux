@@ -85,6 +85,23 @@ input, select, textarea {
   text-align: right;
 }
 
+/* Hide number input spinner arrows completely */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]:hover::-webkit-inner-spin-button,
+input[type="number"]:hover::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+
 /* Flip lucide icons that have directional meaning */
 [dir="rtl"] .flip-rtl {
   transform: scaleX(-1);

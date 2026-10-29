@@ -710,12 +710,14 @@ const POSPage = () => {
                     <span className="text-[11px] font-semibold text-muted-foreground">سعر القطعة:</span>
                     <div className="relative inline-flex items-center">
                       <input
-                        type="number"
-                        min="0"
-                        step="any"
+                        type="text"
+                        inputMode="decimal"
                         value={item.price === 0 ? '' : item.price}
                         placeholder="0"
-                        onChange={(e) => updateItemPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/[^0-9.]/g, '');
+                          updateItemPrice(item.id, val === '' ? 0 : parseFloat(val));
+                        }}
                         className="w-16 h-6 px-1.5 text-xs font-black bg-background border border-border/80 focus:border-primary rounded outline-none text-primary text-center"
                         title="تعديل سعر القطعة"
                       />
@@ -917,12 +919,14 @@ const POSPage = () => {
                               <span className="text-xs font-bold text-muted-foreground">للقطعة:</span>
                               <div className="relative inline-flex items-center">
                                 <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={item.price === 0 ? '' : item.price}
                                   placeholder="0"
-                                  onChange={(e) => updateItemPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^0-9.]/g, '');
+                                    updateItemPrice(item.id, val === '' ? 0 : parseFloat(val));
+                                  }}
                                   className="w-16 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 text-xs font-black text-primary outline-none text-center"
                                   title="تعديل سعر القطعة الواحدة"
                                 />
@@ -935,12 +939,14 @@ const POSPage = () => {
                               <span className="text-xs font-bold text-muted-foreground">الإجمالي:</span>
                               <div className="relative inline-flex items-center">
                                 <input
-                                  type="number"
-                                  min="0"
-                                  step="any"
+                                  type="text"
+                                  inputMode="decimal"
                                   value={(item.price * item.quantity) === 0 ? '' : Number((item.price * item.quantity).toFixed(2))}
                                   placeholder="0"
-                                  onChange={(e) => updateItemTotalPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/[^0-9.]/g, '');
+                                    updateItemTotalPrice(item.id, val === '' ? 0 : parseFloat(val));
+                                  }}
                                   className="w-20 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 text-xs font-black text-foreground outline-none text-center"
                                   title="تعديل إجمالي سعر البند"
                                 />
@@ -954,12 +960,14 @@ const POSPage = () => {
                             <span className="text-xs font-bold text-muted-foreground">السعر:</span>
                             <div className="relative inline-flex items-center">
                               <input
-                                type="number"
-                                min="0"
-                                step="any"
+                                type="text"
+                                inputMode="decimal"
                                 value={item.price === 0 ? '' : item.price}
                                 placeholder="0"
-                                onChange={(e) => updateItemPrice(item.id, e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                                onChange={(e) => {
+                                  const val = e.target.value.replace(/[^0-9.]/g, '');
+                                  updateItemPrice(item.id, val === '' ? 0 : parseFloat(val));
+                                }}
                                 className="w-24 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-2 py-1 text-sm font-black text-primary outline-none text-center"
                                 title="تحديد سعر هذا المنتج"
                               />
@@ -982,11 +990,11 @@ const POSPage = () => {
                   </div>
                   {discountType !== 'NONE' && (
                     <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       placeholder={discountType === 'FIXED' ? 'مبلغ الخصم (USD)' : 'النسبة المئوية (%)'}
                       value={discountValue}
-                      onChange={e => setDiscountValue(e.target.value)}
+                      onChange={e => setDiscountValue(e.target.value.replace(/[^0-9.]/g, ''))}
                       className="w-full bg-background border border-border h-11 rounded-lg px-4 font-bold text-primary outline-none focus:border-primary transition-colors text-lg"
                     />
                   )}
@@ -1026,10 +1034,10 @@ const POSPage = () => {
                              }} className="text-primary hover:underline bg-primary/10 px-2 py-0.5 rounded">تسديد الباقي</button>
                           </label>
                           <input
-                            type="number"
-                            min="0"
+                            type="text"
+                            inputMode="decimal"
                             value={paidSyp}
-                            onChange={e => setPaidSyp(e.target.value)}
+                            onChange={e => setPaidSyp(e.target.value.replace(/[^0-9.]/g, ''))}
                           className="w-full bg-background border border-border h-11 rounded-lg px-4 font-black text-primary outline-none focus:border-primary transition-colors text-xl placeholder-muted-foreground"
                           placeholder="0"
                         />
@@ -1046,10 +1054,10 @@ const POSPage = () => {
                              }} className="text-emerald-700 hover:underline bg-emerald-500/10 px-2 py-0.5 rounded">تسديد الباقي</button>
                           </label>
                         <input
-                          type="number"
-                          min="0"
+                          type="text"
+                          inputMode="decimal"
                           value={paidUsd}
-                          onChange={e => setPaidUsd(e.target.value)}
+                          onChange={e => setPaidUsd(e.target.value.replace(/[^0-9.]/g, ''))}
                           className="w-full bg-emerald-50 border border-emerald-200 h-11 rounded-lg px-4 font-black text-emerald-600 outline-none focus:border-emerald-500 transition-colors text-xl placeholder-emerald-300"
                           placeholder="0"
                         />
