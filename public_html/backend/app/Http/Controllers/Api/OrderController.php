@@ -106,6 +106,8 @@ class OrderController extends Controller
             'customerId' => 'nullable|exists:customers,id',
             'paymentMethod' => 'nullable|string',
             'paidAmount' => 'nullable|numeric|min:0',
+            'paidSyp' => 'nullable|numeric|min:0',
+            'paidUsd' => 'nullable|numeric|min:0',
             'debtAmount' => 'nullable|numeric|min:0',
             'discountType' => 'nullable|string',
             'discountValue' => 'nullable|numeric|min:0',
@@ -113,77 +115,80 @@ class OrderController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $exchangeRate = $request->exchangeRate ?? (float) Setting::get('current_exchange_rate', 1);
+        try {
+            DB::beginTransaction();
 
-        $totalSyp = $request->currency === 'USD'
-            ? $request->total * $exchangeRate
-            : $request->total;
-            
-        $customer = null;
-        if ($request->filled('customerId')) {
-            $customer = Customer::find($request->customerId);
-        } elseif ($request->filled('customerName')) {
-            // Check if customer with this name already exists to avoid duplicates
-            $customer = Customer::firstOrCreate(
-                ['name' => $request->customerName],
-                [
-                    'total_debt' => 0,
-                    'phone' => $request->customerPhone ?? null,
-                    'address' => $request->customerAddress ?? null,
-                ]
-            );
-        }
+            $exchangeRate = $request->exchangeRate ?? (float) Setting::get('current_exchange_rate', 1);
 
-        $order = Order::create([
-            'total' => $request->total,
-            'total_syp' => $totalSyp,
-            'currency' => $request->currency,
-            'exchange_rate' => $exchangeRate,
-            'status' => 'COMPLETED',
-            'source' => $request->source,
-            'delivery_company_id' => $request->deliveryCompanyId,
-            'created_by' => $request->createdBy,
-            'is_settled' => false,
-            'is_locked' => false,
-            'customer_id' => $customer ? $customer->id : null,
-            'customer_name' => $customer ? $customer->name : null,
-            'payment_method' => $request->paymentMethod ?? 'CASH',
-            'paid_amount' => $request->paidAmount ?? $request->total,
-            'debt_amount' => $request->debtAmount ?? 0,
-            'debt_currency' => $request->debtCurrency ?? 'USD',
-            'discount_type' => $request->discountType,
-            'discount_value' => $request->discountValue ?? 0,
-            'discount_amount' => $request->discountAmount ?? 0,
-            'notes' => $request->notes,
-        ]);
-
-        if ($customer && $request->debtAmount > 0) {
-            $debtCurr = $request->debtCurrency ?? 'USD';
-            if ($debtCurr === 'USD') {
-                $customer->increment('total_debt_usd', $request->debtAmount);
-            } else {
-                $customer->increment('total_debt', $request->debtAmount);
+            $totalSyp = $request->currency === 'USD'
+                ? $request->total * $exchangeRate
+                : $request->total;
+                
+            $customer = null;
+            if ($request->filled('customerId')) {
+                $customer = Customer::find($request->customerId);
+            } elseif ($request->filled('customerName')) {
+                // Check if customer with this name already exists to avoid duplicates
+                $customer = Customer::firstOrCreate(
+                    ['name' => $request->customerName],
+                    [
+                        'total_debt' => 0,
+                        'phone' => $request->customerPhone ?? null,
+                        'address' => $request->customerAddress ?? null,
+                    ]
+                );
             }
-        }
 
-        foreach ($request->items as $item) {
-            $product = Product::find($item['productId']);
-            $costAtSale = 0; // Simplified after removing kitchen/finance
-
-            OrderItem::create([
-                'order_id' => $order->id,
-                'product_id' => $item['productId'],
-                'quantity' => $item['quantity'],
-                'price' => $item['price'],
-                'cost_at_sale_syp' => $costAtSale,
+            $order = Order::create([
+                'total' => $request->total,
+                'total_syp' => $totalSyp,
+                'currency' => $request->currency,
+                'exchange_rate' => $exchangeRate,
+                'status' => 'COMPLETED',
+                'source' => $request->source,
+                'delivery_company_id' => $request->deliveryCompanyId,
+                'created_by' => $request->createdBy,
+                'is_settled' => false,
+                'is_locked' => false,
+                'customer_id' => $customer ? $customer->id : null,
+                'customer_name' => $customer ? $customer->name : null,
+                'payment_method' => $request->paymentMethod ?? 'CASH',
+                'paid_amount' => $request->paidAmount ?? $request->total,
+                'debt_amount' => $request->debtAmount ?? 0,
+                'debt_currency' => $request->debtCurrency ?? 'USD',
+                'discount_type' => $request->discountType,
+                'discount_value' => $request->discountValue ?? 0,
+                'discount_amount' => $request->discountAmount ?? 0,
+                'notes' => $request->notes,
             ]);
 
-// خصم من المخزون
-            if ($product) {
-                if ($product->track_stock) {
+            if ($customer && $request->debtAmount > 0) {
+                $debtCurr = $request->debtCurrency ?? 'USD';
+                if ($debtCurr === 'USD') {
+                    $customer->increment('total_debt_usd', $request->debtAmount);
+                } else {
+                    $customer->increment('total_debt', $request->debtAmount);
+                }
+            }
+
+            foreach ($request->items as $item) {
+                $product = Product::find($item['productId']);
+                $costAtSale = 0; // Simplified after removing kitchen/finance
+
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $item['productId'],
+                    'quantity' => $item['quantity'],
+                    'price' => $item['price'],
+                    'cost_at_sale_syp' => $costAtSale,
+                ]);
+
+                // خصم من المخزون
+                if ($product && $product->track_stock) {
                     if ($product->stock < $item['quantity']) {
+                        DB::rollBack();
                         return response()->json([
-                            'error' => 'لا يوجد مخزون كافٍ من: ' . $product->name,
+                            'error' => 'لا يوجد مخزون كافٍ من: ' . $product->name . ' (المتوفر: ' . $product->stock . ')',
                             'available' => $product->stock,
                             'requested' => $item['quantity']
                         ], 400);
@@ -192,37 +197,47 @@ class OrderController extends Controller
                     $product->save();
                 }
             }
-        }
 
-        
-        
-        // Register POS Sale as Income in Treasury (Multi-Currency)
-        $paidUsdToRegister = $request->paidUsd ?? 0;
-        $paidSypToRegister = $request->paidSyp ?? ($request->paidAmount ?? $request->total);
+            // Register POS Sale as Income in Treasury (Multi-Currency)
+            try {
+                $paidUsdToRegister = $request->paidUsd ?? 0;
+                $paidSypToRegister = $request->paidSyp ?? ($request->paidAmount ?? $request->total);
 
-        if ($paidUsdToRegister > 0) {
-            Transaction::create([
-                'type' => 'INCOME',
-                'category' => 'مبيعات دولار',
-                'amount' => $paidUsdToRegister,
-                'date' => \Carbon\Carbon::today()->toDateString(),
-                'reference_id' => 'Order #' . $order->id,
-                'notes' => 'بيع نقدي بالدولار' . ($customer ? ' - العميل: ' . $customer->name : ''),
-            ]);
-        }
-        if ($paidSypToRegister > 0) {
-            Transaction::create([
-                'type' => 'INCOME',
-                'category' => 'مبيعات سوري',
-                'amount' => $paidSypToRegister,
-                'date' => \Carbon\Carbon::today()->toDateString(),
-                'reference_id' => 'Order #' . $order->id,
-                'notes' => 'بيع نقدي بالسوري' . ($customer ? ' - العميل: ' . $customer->name : ''),
-            ]);
-        }
-        
-        return response()->json($order->load('items'), 201);
+                if ($paidUsdToRegister > 0) {
+                    Transaction::create([
+                        'type' => 'INCOME',
+                        'category' => 'مبيعات دولار',
+                        'amount' => $paidUsdToRegister,
+                        'currency' => 'USD',
+                        'date' => \Carbon\Carbon::today()->toDateString(),
+                        'reference_id' => 'Order #' . $order->id,
+                        'notes' => 'بيع نقدي بالدولار' . ($customer ? ' - العميل: ' . $customer->name : ''),
+                    ]);
+                }
+                if ($paidSypToRegister > 0) {
+                    Transaction::create([
+                        'type' => 'INCOME',
+                        'category' => 'مبيعات سوري',
+                        'amount' => $paidSypToRegister,
+                        'currency' => 'SYP',
+                        'date' => \Carbon\Carbon::today()->toDateString(),
+                        'reference_id' => 'Order #' . $order->id,
+                        'notes' => 'بيع نقدي بالسوري' . ($customer ? ' - العميل: ' . $customer->name : ''),
+                    ]);
+                }
+            } catch (\Throwable $te) {
+                \Illuminate\Support\Facades\Log::warning('Treasury transaction warning: ' . $te->getMessage());
+            }
 
+            DB::commit();
+            return response()->json($order->load('items'), 201);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            \Illuminate\Support\Facades\Log::error('Order save error: ' . $e->getMessage() . "\n" . $e->getTraceAsString());
+            return response()->json([
+                'error' => 'تعذر إتمام الطلب: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show(Order $order)

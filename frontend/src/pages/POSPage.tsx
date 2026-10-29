@@ -379,7 +379,16 @@ const POSPage = () => {
     },
     onError: (err: any) => {
       setIsCheckoutOpen(true); // Re-open if failed
-      showToast(err?.response?.data?.error || 'حدث خطأ في إرسال الطلب.');
+      console.error('Order checkout error:', err?.response || err);
+      const validationErrors = err?.response?.data?.errors
+        ? Object.values(err.response.data.errors).flat().join(' | ')
+        : null;
+      const errorMsg =
+        validationErrors ||
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        'حدث خطأ في إرسال الطلب.';
+      showToast(errorMsg);
     }
   });
 
@@ -401,18 +410,20 @@ const POSPage = () => {
       total: cartTotal, // sending original total, backend handles discount
       currency: 'USD',
       source: 'SHOP',
-      customerName: customerName,
-      customerPhone: customerPhone,
-      customerAddress: customerAddress,
+      customerName: customerName.trim() || null,
+      customerPhone: customerPhone.trim() || null,
+      customerAddress: customerAddress.trim() || null,
       customerId: selectedCustomerId || null,
       paymentMethod: finalPaymentMethod,
+      paidAmount: grandTotal,
       paidSyp: Number(paidSyp || 0),
       paidUsd: Number(paidUsd || 0),
       debtAmount: calculatedDebt,
       debtCurrency: debtCurrency,
       discountType: discountType === 'NONE' ? null : discountType,
       discountValue: Number(discountValue) || 0,
-      notes: notes
+      discountAmount: calculatedDiscount,
+      notes: notes.trim() || null
     };
 
     saveOrderMutation.mutate(payload);
