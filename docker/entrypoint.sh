@@ -33,6 +33,7 @@ fi
 # Ensure uploads directory permissions
 mkdir -p /var/www/backend/public/uploads/datasheets
 mkdir -p /var/www/backend/public/uploads/products
+mkdir -p /var/www/backend/public/uploads/containers
 chown -R www-data:www-data /var/www/backend/public
 chmod -R 777 /var/www/backend/public
 

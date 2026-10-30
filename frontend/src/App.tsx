@@ -14,6 +14,7 @@ const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
 const ExpensesPage = React.lazy(() => import('./pages/ExpensesPage'));
 const ExchangeRatesHistoryPage = React.lazy(() => import('./pages/ExchangeRatesHistoryPage'));
 const DataSheetsPage = React.lazy(() => import('./pages/DataSheetsPage'));
+const ContainersPage = React.lazy(() => import('./pages/ContainersPage'));
 
 // A sleek inline loader to prevent jarring white screens during lazy loading
 const PageLoader = () => (
@@ -44,6 +45,7 @@ function App() {
                         <Route path="/" element={<DashboardOverview />} />
                         <Route path="/sales" element={<POSPage />} />
                         <Route path="/items" element={<ItemsPage />} />
+                        <Route path="/containers" element={<ContainersPage />} />
                         <Route path="/datasheets" element={<DataSheetsPage />} />
                         <Route path="/customers" element={<CustomersPage />} />
                         

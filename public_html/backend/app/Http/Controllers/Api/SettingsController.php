@@ -156,4 +156,116 @@ class SettingsController extends Controller
     {
         return response()->json($this->calculateTreasury());
     }
+
+    public static function getDefaultRoles()
+    {
+        return [
+            [
+                'id' => 'ADMIN',
+                'name' => 'مدير النظام',
+                'description' => 'صلاحيات كاملة وغير مقيدة على جميع أقسام النظام والعمليات',
+                'is_system' => true,
+                'allowed_pages' => ['dashboard', 'sales', 'orders', 'items', 'datasheets', 'customers', 'expenses', 'exchange-rates', 'users', 'settings'],
+                'actions' => [
+                    'pos_edit_price' => true,
+                    'pos_apply_discount' => true,
+                    'inventory_edit' => true,
+                    'orders_delete' => true,
+                    'view_profits' => true,
+                ]
+            ],
+            [
+                'id' => 'SELLER',
+                'name' => 'كاشير / بائع',
+                'description' => 'وصول مخصص لواجهة المبيعات ونقطة البيع وسجل الطلبات والعملاء',
+                'is_system' => false,
+                'allowed_pages' => ['sales', 'orders', 'customers'],
+                'actions' => [
+                    'pos_edit_price' => true,
+                    'pos_apply_discount' => true,
+                    'inventory_edit' => false,
+                    'orders_delete' => false,
+                    'view_profits' => false,
+                ]
+            ],
+            [
+                'id' => 'ACCOUNTANT',
+                'name' => 'محاسب مالي',
+                'description' => 'إدارة العمليات المالية والمصروفات والعملاء وأسعار الصرف',
+                'is_system' => false,
+                'allowed_pages' => ['dashboard', 'orders', 'customers', 'expenses', 'exchange-rates'],
+                'actions' => [
+                    'pos_edit_price' => false,
+                    'pos_apply_discount' => true,
+                    'inventory_edit' => false,
+                    'orders_delete' => true,
+                    'view_profits' => true,
+                ]
+            ],
+            [
+                'id' => 'INVENTORY',
+                'name' => 'أمين مستودع',
+                'description' => 'إدارة الأصناف والكميات وملفات الداتا شيت وتحديث المخزون',
+                'is_system' => false,
+                'allowed_pages' => ['items', 'datasheets'],
+                'actions' => [
+                    'pos_edit_price' => false,
+                    'pos_apply_discount' => false,
+                    'inventory_edit' => true,
+                    'orders_delete' => false,
+                    'view_profits' => false,
+                ]
+            ]
+        ];
+    }
+
+    public function getRolesPermissions()
+    {
+        $raw = Setting::get('roles_permissions');
+        if ($raw) {
+            $data = json_decode($raw, true);
+            if (is_array($data) && isset($data['roles'])) {
+                return response()->json($data);
+            }
+        }
+
+        return response()->json([
+            'roles' => self::getDefaultRoles()
+        ]);
+    }
+
+    public function updateRolesPermissions(Request $request)
+    {
+        $request->validate([
+            'roles' => 'required|array',
+            'roles.*.id' => 'required|string',
+            'roles.*.name' => 'required|string',
+            'roles.*.allowed_pages' => 'present|array',
+            'roles.*.actions' => 'present|array',
+        ]);
+
+        $roles = $request->roles;
+        foreach ($roles as &$role) {
+            if ($role['id'] === 'ADMIN') {
+                $role['is_system'] = true;
+                $role['allowed_pages'] = ['dashboard', 'sales', 'orders', 'items', 'datasheets', 'customers', 'expenses', 'exchange-rates', 'users', 'settings'];
+                $role['actions'] = [
+                    'pos_edit_price' => true,
+                    'pos_apply_discount' => true,
+                    'inventory_edit' => true,
+                    'orders_delete' => true,
+                    'view_profits' => true,
+                ];
+            }
+        }
+        unset($role);
+
+        $payload = ['roles' => $roles];
+        Setting::set('roles_permissions', json_encode($payload, JSON_UNESCAPED_UNICODE));
+
+        return response()->json([
+            'message' => 'تم حفظ المسميات الوظيفية والصلاحيات بنجاح',
+            'roles' => $roles
+        ]);
+    }
 }

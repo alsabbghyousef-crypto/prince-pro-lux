@@ -36,5 +36,10 @@ public_html/backend/create_*.php
 public_html/backend/reset_*.php
 public_html/backend/check_*.php
 
+public_html/backend/public/uploads/containers/*
+!public_html/backend/public/uploads/containers/.gitkeep
+public_html/backend/public/uploads/datasheets/*
+!public_html/backend/public/uploads/datasheets/.gitkeep
+
 # Large zip files
 *.zip

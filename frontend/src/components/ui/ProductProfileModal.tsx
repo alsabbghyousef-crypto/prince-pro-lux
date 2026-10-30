@@ -66,11 +66,15 @@ export default function ProductProfileModal({ productId, onClose }: ProductProfi
               الملف الشخصي للمنتج
             </h3>
             {data?.product && (
-              <p className="text-muted-foreground mt-2 font-bold text-lg">
-                {data.product.name} 
-                <span className="mx-2 text-border">|</span>
+              <p className="text-muted-foreground mt-2 font-bold text-lg flex items-center gap-2 flex-wrap">
+                <span>{data.product.name}</span> 
+                <span className="text-border">|</span>
                 <span className={data.product.stock > 0 ? "text-emerald-600" : "text-destructive"}>
                   المخزون الحالي: {data.product.stock}
+                </span>
+                <span className="text-border">|</span>
+                <span className="text-amber-600 dark:text-amber-400 text-sm bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20 font-medium">
+                  حد إعادة الطلب: {data.product.reorder_level ?? data.product.min_threshold ?? 5} قطعة
                 </span>
               </p>
             )}

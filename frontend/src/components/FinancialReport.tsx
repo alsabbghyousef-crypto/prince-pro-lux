@@ -1,7 +1,8 @@
 import SearchableSelect from '../components/ui/SearchableSelect';
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, ChevronLeft, ChevronRight, FileText, Search } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight, FileText, Search, Printer, Loader2 } from 'lucide-react';
+import ModalPortal from '../components/ui/ModalPortal';
 import api from '../services/api';
 
 export default function FinancialReport({ onClose }: { onClose?: () => void }) {
@@ -30,9 +31,24 @@ export default function FinancialReport({ onClose }: { onClose?: () => void }) {
     });
   }, [allRecords, searchQuery, selectedType]);
 
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
+  const [loadingInvoiceId, setLoadingInvoiceId] = useState<number | null>(null);
+
+  const handleViewInvoice = async (orderId: number) => {
+    try {
+      setLoadingInvoiceId(orderId);
+      const res = await api.get(`/orders/${orderId}`);
+      setSelectedInvoice(res.data);
+    } catch (err) {
+      console.error('Error fetching order invoice:', err);
+    } finally {
+      setLoadingInvoiceId(null);
+    }
+  };
+
   const metrics = data?.metrics || { 
-    syp: { total_revenue: 0, total_expense: 0, total_cost: 0, net_profit: 0, total_cash_in: 0, total_cash_out: 0 },
-    usd: { total_revenue: 0, total_expense: 0, total_cost: 0, net_profit: 0, total_cash_in: 0, total_cash_out: 0 }
+    syp: { total_revenue: 0, total_expense: 0, total_cost: 0, net_profit: 0, total_cash_in: 0, total_cash_out: 0, total_customer_debt: 0, period_debt: 0 },
+    usd: { total_revenue: 0, total_expense: 0, total_cost: 0, net_profit: 0, total_cash_in: 0, total_cash_out: 0, total_customer_debt: 0, period_debt: 0 }
   };
 
   const handlePrev = () => {
@@ -54,9 +70,9 @@ export default function FinancialReport({ onClose }: { onClose?: () => void }) {
   };
 
   const formatMoney = (valSyp: number, valUsd: number) => {
-    if (currency === 'syp') return `SYP ${Number(valSyp).toLocaleString()}`;
+    if (currency === 'syp') return `${Number(valSyp).toLocaleString()} ل.س`;
     if (currency === 'usd') return `$${Number(valUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-    return `SYP ${Number(valSyp).toLocaleString()} | $${Number(valUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    return `${Number(valSyp).toLocaleString()} ل.س | $${Number(valUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
   
   const formatMoneySigned = (valSyp: number, valUsd: number) => {
@@ -64,9 +80,9 @@ export default function FinancialReport({ onClose }: { onClose?: () => void }) {
     const absSyp = Math.abs(valSyp);
     const absUsd = Math.abs(valUsd);
     
-    if (currency === 'syp') return `${sign}${Number(absSyp).toLocaleString()}`;
-    if (currency === 'usd') return `${sign}${Number(absUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-    return `${sign}${Number(absSyp).toLocaleString()} | ${sign}${Number(absUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    if (currency === 'syp') return `${sign}${Number(absSyp).toLocaleString()} ل.س`;
+    if (currency === 'usd') return `${sign}$${Number(absUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    return `${sign}${Number(absSyp).toLocaleString()} ل.س | ${sign}$${Number(absUsd).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
   };
 
   // Compute subtotals for footer based on filteredRecords
@@ -208,9 +224,25 @@ export default function FinancialReport({ onClose }: { onClose?: () => void }) {
               <div className="text-xl xl:text-2xl font-black text-foreground" dir="ltr">{formatMoneySigned(metrics.syp.total_cash_in - metrics.syp.total_cash_out, metrics.usd.total_cash_in - metrics.usd.total_cash_out)}</div>
             </div>
 
-            <div className="bg-secondary/30 shadow-sm border border-border rounded-2xl p-4 xl:p-6 relative overflow-hidden flex flex-col justify-center items-center text-center">
-              <div className="text-muted-foreground text-xs font-bold mb-2">نطاق التقرير</div>
-              <div className="text-sm font-black text-foreground" dir="ltr">{scope} | {refDate}</div>
+            <div className="bg-background shadow-sm border-t-4 border-purple-500 border-x border-b border-border rounded-2xl p-4 xl:p-6 relative overflow-hidden group hover:-translate-y-1 transition-all duration-300">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-purple-600 text-xs font-bold">إجمالي ديون العملاء</div>
+                {(metrics.usd.period_debt > 0 || metrics.syp.period_debt > 0) && (
+                  <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600">
+                    + ديون جديدة
+                  </span>
+                )}
+              </div>
+              <div className="text-xl xl:text-2xl font-black text-foreground" dir="ltr">
+                {formatMoney(metrics.syp.total_customer_debt, metrics.usd.total_customer_debt)}
+              </div>
+              <div className="text-[11px] font-bold mt-1.5">
+                {metrics.usd.total_customer_debt > 0 || metrics.syp.total_customer_debt > 0 ? (
+                  <span className="text-rose-600">ذمم مدينة مستحقة التحصيل</span>
+                ) : (
+                  <span className="text-emerald-600">لا توجد ديون معلقة</span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -269,7 +301,27 @@ export default function FinancialReport({ onClose }: { onClose?: () => void }) {
                         {r.type === 'DEBT_PAYMENT' && <span className="inline-block px-2 py-1 rounded-md text-[10px] font-black border border-blue-500/30 text-blue-700 bg-blue-500/10">دفعة دين</span>}
                       </td>
                       <td className="p-4 text-muted-foreground text-xs font-bold" dir="ltr">{r.date_string.split(' ')[0]}</td>
-                      <td className="p-4 font-black text-foreground">{r.details}</td>
+                                            <td className="p-4 font-black text-foreground">
+                        {r.order_id ? (
+                          <button
+                            type="button"
+                            onClick={() => handleViewInvoice(r.order_id)}
+                            className="inline-flex items-center gap-2 group text-right hover:text-primary transition-colors focus:outline-none"
+                            title="اضغط لعرض الفاتورة وتفاصيلها"
+                          >
+                            <span className="group-hover:underline underline-offset-4 font-black transition-all">
+                              {r.details}
+                            </span>
+                            {loadingInvoiceId === r.order_id ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-primary shrink-0" />
+                            ) : (
+                              <FileText className="w-4 h-4 text-primary opacity-60 group-hover:opacity-100 group-hover:scale-110 transition-all shrink-0" />
+                            )}
+                          </button>
+                        ) : (
+                          <span>{r.details}</span>
+                        )}
+                      </td>
                       
                       {/* Revenue */}
                       <td className="p-4 font-bold text-emerald-600" dir="ltr">
@@ -335,6 +387,142 @@ export default function FinancialReport({ onClose }: { onClose?: () => void }) {
         </>
       )}
       
+            {/* Order Invoice Details Modal */}
+      <ModalPortal isOpen={!!selectedInvoice} onClose={() => setSelectedInvoice(null)} className="print:bg-white print:backdrop-blur-none">
+        {selectedInvoice && (
+          <div className="bg-card border border-white/10 dark:border-white/5 rounded-[32px] p-8 max-w-2xl w-[95vw] shadow-[0_30px_60px_-15px_rgba(0,0,0,0.4)] space-y-6 print:border-none print:shadow-none print:p-0 print:text-black print:bg-white max-h-[90vh] overflow-y-auto scrollbar-hide printable-receipt print-container" dir="rtl">
+            {/* Header */}
+            <div className="text-center pb-6 border-b border-dashed border-border print:border-gray-400">
+              <h2 className="text-3xl font-black mb-2 bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent print:text-black">Prince Pro Lux</h2>
+              <p className="text-muted-foreground print:text-gray-500 text-sm font-bold">فاتورة مبيعات نظام نقاط البيع</p>
+              <div className="mt-4 inline-flex flex-col items-center justify-center bg-secondary/50 print:bg-transparent px-4 py-2 rounded-2xl">
+                <p className="text-foreground font-black print:text-black">فاتورة طلب رقم #{selectedInvoice.id}</p>
+                <p className="text-muted-foreground print:text-gray-500 text-xs font-bold mt-1" dir="ltr">
+                  {selectedInvoice.created_at ? new Date(selectedInvoice.created_at).toLocaleString('ar-SY', { dateStyle: 'medium', timeStyle: 'short' }) : ''}
+                </p>
+              </div>
+            </div>
+
+            {/* Customer & Order Info */}
+            <div className="text-sm font-bold border-b border-dashed border-border print:border-gray-400 pb-4 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground print:text-gray-500">العميل</span>
+                <span className="text-foreground print:text-black text-base">{selectedInvoice.customer?.name || selectedInvoice.customer_name || 'عميل نقدي'}</span>
+              </div>
+              {selectedInvoice.customer?.phone && (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground print:text-gray-500">رقم الهاتف</span>
+                  <span className="text-foreground print:text-black font-mono" dir="ltr">{selectedInvoice.customer.phone}</span>
+                </div>
+              )}
+              {selectedInvoice.customer?.address && (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-muted-foreground print:text-gray-500">العنوان</span>
+                  <span className="text-foreground print:text-black">{selectedInvoice.customer.address}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-xs pt-1">
+                <span className="text-muted-foreground print:text-gray-500">طريقة الدفع</span>
+                <span className={`px-2.5 py-1 rounded-md text-xs font-black ${selectedInvoice.payment_method === 'CASH' ? 'bg-emerald-500/10 text-emerald-600 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-600 border border-amber-500/20'}`}>
+                  {selectedInvoice.payment_method === 'CASH' ? 'نقدي (كاش)' : 'دين / آجل'}
+                </span>
+              </div>
+            </div>
+
+            {/* Items */}
+            <div className="space-y-4 pb-6 border-b border-dashed border-border print:border-gray-400 text-right text-sm">
+              <div className="flex justify-between items-center text-xs text-muted-foreground font-bold mb-2">
+                <span>الصنف والكمية</span>
+                <span>المجموع</span>
+              </div>
+              {selectedInvoice.items?.map((item: any, i: number) => {
+                const isReturned = (item.returned_quantity || 0) > 0;
+                const netQuantity = (item.quantity || 0) - (item.returned_quantity || 0);
+                return (
+                  <div key={i} className="flex justify-between items-start">
+                    <div className="flex flex-col text-right">
+                      <span className={`font-bold text-base text-foreground print:text-black ${netQuantity === 0 ? 'line-through opacity-50' : ''}`}>
+                        {item.product?.name || item.product_name || `صنف #${item.product_id}`}
+                      </span>
+                      <div className="flex items-center gap-2 mt-1 justify-start">
+                        <span className="text-xs font-bold text-muted-foreground print:text-gray-500 bg-secondary/50 print:bg-transparent px-2 py-0.5 rounded-lg" dir="ltr">
+                          ${Number(item.price).toLocaleString()} × {item.quantity}
+                        </span>
+                        {isReturned && (
+                          <span className="text-xs font-bold text-rose-500 bg-rose-500/10 print:bg-transparent px-2 py-0.5 rounded-lg">
+                            مرتجع: {item.returned_quantity}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className={`font-black text-base text-foreground print:text-black mt-0.5 ${netQuantity === 0 ? 'line-through opacity-50' : ''}`} dir="ltr">
+                      ${(Number(item.price) * netQuantity).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Totals Summary */}
+            <div className="space-y-2.5 font-bold text-sm border-b border-dashed border-border print:border-gray-400 pb-6 text-right">
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground print:text-gray-500">الإجمالي بالدولار</span>
+                <span className="text-lg font-black text-foreground print:text-black" dir="ltr">
+                  ${Number(selectedInvoice.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs text-muted-foreground">
+                <span>المعادل بالليرة السورية (سعر الصرف {Number(selectedInvoice.exchange_rate || 13950).toLocaleString()})</span>
+                <span className="font-bold text-foreground" dir="ltr">
+                  {Number(selectedInvoice.total_syp || (selectedInvoice.total * (selectedInvoice.exchange_rate || 13950))).toLocaleString()} ل.س
+                </span>
+              </div>
+              {Number(selectedInvoice.discount_amount || 0) > 0 && (
+                <div className="flex justify-between items-center text-emerald-500">
+                  <span>الخصم الممنوح</span>
+                  <span dir="ltr">-${Number(selectedInvoice.discount_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-primary pt-1 border-t border-border/50">
+                <span>المدفوع نقدياً</span>
+                <span className="text-xl font-black" dir="ltr">
+                  ${Number(selectedInvoice.paid_usd > 0 ? selectedInvoice.paid_usd : (selectedInvoice.paid_amount || selectedInvoice.total)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+              {Number(selectedInvoice.debt_amount || 0) > 0 && (
+                <div className="flex justify-between items-center text-rose-500 bg-rose-500/5 p-2 rounded-xl">
+                  <span>المتبقي (دين على العميل)</span>
+                  <span className="text-lg font-black" dir="ltr">
+                    {selectedInvoice.debt_currency === 'USD' ? '$' : ''}
+                    {Number(selectedInvoice.debt_amount).toLocaleString()}
+                    {selectedInvoice.debt_currency !== 'USD' ? ' ل.س' : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Actions (Hidden in Print) */}
+            <div className="print:hidden flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedInvoice(null)}
+                className="flex-1 py-3.5 text-sm font-bold bg-secondary/80 text-foreground hover:bg-secondary rounded-2xl transition-colors"
+              >
+                إغلاق
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-[2] py-3.5 text-base font-black bg-primary text-primary-foreground hover:bg-primary/90 rounded-2xl shadow-lg shadow-primary/20 flex items-center justify-center gap-2 transition-all hover:scale-[1.02]"
+              >
+                <Printer className="w-5 h-5" />
+                طباعة الفاتورة
+              </button>
+            </div>
+          </div>
+        )}
+      </ModalPortal>
+
       <style>{`
         @media print {
           body * {

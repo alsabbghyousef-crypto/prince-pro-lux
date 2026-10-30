@@ -28,26 +28,7 @@ class DatabaseSeeder extends Seeder
             'role' => 'ADMIN',
         ]);
 
-        User::create([
-            'name' => 'محمد (بائع)',
-            'email' => 'mohamed@princeprolux.com',
-            'password' => Hash::make('123456'),
-            'role' => 'SELLER',
-        ]);
 
-        User::create([
-            'name' => 'موظف مبيعات',
-            'email' => 'seller@princeprolux.com',
-            'password' => Hash::make('123456'),
-            'role' => 'SELLER',
-        ]);
-
-        User::create([
-            'name' => 'عبيدة (مطبخ)',
-            'email' => 'obeada@princeprolux.com',
-            'password' => Hash::make('123456'),
-            'role' => 'CHEF',
-        ]);
 
         // Create Categories
         $juiceCategory = Category::create(['name' => 'عصائر', 'label' => '🍹']);

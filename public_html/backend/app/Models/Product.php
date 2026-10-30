@@ -19,6 +19,7 @@ class Product extends Model
         "category_id",
         "image",
         "stock",
+        "min_threshold",
         "track_stock",
         "is_estimated",
         "cogs_percentage",
@@ -29,11 +30,26 @@ class Product extends Model
         "price" => "decimal:2",
         "cost_price" => "decimal:2",
         "stock" => "decimal:2",
+        "min_threshold" => "decimal:2",
         "track_stock" => "boolean",
         "is_estimated" => "boolean",
         "cogs_percentage" => "decimal:2",
         "kitchen_reset_at" => "datetime",
     ];
+
+    protected $appends = [
+        'reorder_level'
+    ];
+
+    public function getReorderLevelAttribute()
+    {
+        return (float) ($this->min_threshold ?? 5);
+    }
+
+    public function setReorderLevelAttribute($value)
+    {
+        $this->attributes['min_threshold'] = $value;
+    }
 
     public function category(): BelongsTo
     {

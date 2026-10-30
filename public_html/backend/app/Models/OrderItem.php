@@ -13,6 +13,7 @@ class OrderItem extends Model
         'quantity',
         'returned_quantity',
         'price',
+        'cost_at_sale_syp',
         'is_paid',
     ];
 

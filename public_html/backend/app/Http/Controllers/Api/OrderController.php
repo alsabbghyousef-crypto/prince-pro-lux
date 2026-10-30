@@ -118,11 +118,34 @@ class OrderController extends Controller
         try {
             DB::beginTransaction();
 
-            $exchangeRate = $request->exchangeRate ?? (float) Setting::get('current_exchange_rate', 1);
+            $exchangeRate = (float) ($request->exchangeRate ?? Setting::get('exchange_rate', Setting::get('current_exchange_rate', 13950)));
+            if ($exchangeRate <= 1) {
+                $exchangeRate = (float) Setting::get('exchange_rate', 13950);
+            }
+            if ($exchangeRate <= 1) {
+                $exchangeRate = 13950;
+            }
+
+            $isCash = ($request->paymentMethod ?? 'CASH') === 'CASH';
+            $debtAmount = (float) ($request->debtAmount ?? 0);
+            $debtCurrency = $request->debtCurrency ?? 'USD';
 
             $totalSyp = $request->currency === 'USD'
-                ? $request->total * $exchangeRate
-                : $request->total;
+                ? (float)$request->total * $exchangeRate
+                : (float)$request->total;
+
+            $paidUsd = (float) ($request->paidUsd ?? 0);
+            $paidSyp = (float) ($request->paidSyp ?? 0);
+
+            if ($isCash && $paidUsd == 0 && $paidSyp == 0) {
+                if ($request->currency === 'USD') {
+                    $paidUsd = max(0, (float)$request->total - ($debtCurrency === 'USD' ? $debtAmount : ($debtAmount / $exchangeRate)));
+                    $paidSyp = $paidUsd * $exchangeRate;
+                } else {
+                    $paidSyp = max(0, (float)$request->total - ($debtCurrency === 'SYP' ? $debtAmount : ($debtAmount * $exchangeRate)));
+                    $paidUsd = $paidSyp / $exchangeRate;
+                }
+            }
                 
             $customer = null;
             if ($request->filled('customerId')) {
@@ -154,8 +177,10 @@ class OrderController extends Controller
                 'customer_name' => $customer ? $customer->name : null,
                 'payment_method' => $request->paymentMethod ?? 'CASH',
                 'paid_amount' => $request->paidAmount ?? $request->total,
-                'debt_amount' => $request->debtAmount ?? 0,
-                'debt_currency' => $request->debtCurrency ?? 'USD',
+                'paid_usd' => $paidUsd,
+                'paid_syp' => $paidSyp,
+                'debt_amount' => $debtAmount,
+                'debt_currency' => $debtCurrency,
                 'discount_type' => $request->discountType,
                 'discount_value' => $request->discountValue ?? 0,
                 'discount_amount' => $request->discountAmount ?? 0,
@@ -173,14 +198,15 @@ class OrderController extends Controller
 
             foreach ($request->items as $item) {
                 $product = Product::find($item['productId']);
-                $costAtSale = 0; // Simplified after removing kitchen/finance
+                $costUsd = $product ? (float) ($product->cost_price ?: ($product->price * 0.8)) : 0;
+                $costAtSaleSyp = $costUsd * $exchangeRate;
 
                 OrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $item['productId'],
                     'quantity' => $item['quantity'],
                     'price' => $item['price'],
-                    'cost_at_sale_syp' => $costAtSale,
+                    'cost_at_sale_syp' => $costAtSaleSyp,
                 ]);
 
                 // خصم من المخزون
@@ -200,25 +226,22 @@ class OrderController extends Controller
 
             // Register POS Sale as Income in Treasury (Multi-Currency)
             try {
-                $paidUsdToRegister = $request->paidUsd ?? 0;
-                $paidSypToRegister = $request->paidSyp ?? ($request->paidAmount ?? $request->total);
-
-                if ($paidUsdToRegister > 0) {
+                if ($paidUsd > 0) {
                     Transaction::create([
                         'type' => 'INCOME',
                         'category' => 'مبيعات دولار',
-                        'amount' => $paidUsdToRegister,
+                        'amount' => $paidUsd,
                         'currency' => 'USD',
                         'date' => \Carbon\Carbon::today()->toDateString(),
                         'reference_id' => 'Order #' . $order->id,
                         'notes' => 'بيع نقدي بالدولار' . ($customer ? ' - العميل: ' . $customer->name : ''),
                     ]);
                 }
-                if ($paidSypToRegister > 0) {
+                if ($paidSyp > 0 && ($request->currency !== 'USD' || (float)($request->paidSyp ?? 0) > 0)) {
                     Transaction::create([
                         'type' => 'INCOME',
                         'category' => 'مبيعات سوري',
-                        'amount' => $paidSypToRegister,
+                        'amount' => $paidSyp,
                         'currency' => 'SYP',
                         'date' => \Carbon\Carbon::today()->toDateString(),
                         'reference_id' => 'Order #' . $order->id,

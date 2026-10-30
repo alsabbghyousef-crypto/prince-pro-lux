@@ -7,8 +7,6 @@ import {
   LayoutDashboard, TrendingDown,
   ShoppingBag,
   ShoppingCart,
-  
-  
   Users,
   Settings,
   LogOut,
@@ -18,11 +16,13 @@ import {
   FileText,
   Package,
   FileSpreadsheet,
+  Boxes,
   Loader2,
   UserCog,
-  
+  ShieldAlert,
   X,
-DollarSign} from 'lucide-react';
+  DollarSign
+} from 'lucide-react';
 import { cn } from '../lib/utils';
 import api from '../services/api';
 
@@ -80,14 +80,24 @@ const NavSection: React.FC<{ label: string }> = ({ label }) => (
 // ── Role badge ────────────────────────────────────────────────────────────────
 const RoleBadge: React.FC<{ role: string }> = ({ role }) => {
   const config: Record<string, { label: string; cls: string }> = {
-    ADMIN:       { label: 'مسؤول النظام', cls: 'bg-primary/10 text-primary' },
-    ACCOUNTANT:  { label: 'محاسب',        cls: 'bg-amber-500/10 text-amber-600' },
-    SELLER:      { label: 'بائع',         cls: 'bg-emerald-500/10 text-emerald-600' },
-    CHEF:        { label: 'مطبخ',         cls: 'bg-orange-500/10 text-orange-600' },
+    ADMIN:       { label: 'مدير النظام', cls: 'bg-primary/10 text-primary' },
+    ACCOUNTANT:  { label: 'محاسب مالي', cls: 'bg-amber-500/10 text-amber-600' },
+    SELLER:      { label: 'كاشير / بائع', cls: 'bg-emerald-500/10 text-emerald-600' },
+    INVENTORY:   { label: 'أمين مستودع', cls: 'bg-indigo-500/10 text-indigo-600' },
   };
-  const { label, cls } = config[role] ?? { label: role, cls: 'bg-secondary text-muted-foreground' };
+  const item = config[role];
+  const label = item ? item.label : role;
+  const cls = item ? item.cls : 'bg-secondary text-muted-foreground';
   return <span className={cn('text-[9px] font-bold px-1.5 py-0.5 rounded-full', cls)}>{label}</span>;
 };
+
+interface UserType {
+  name: string;
+  role: string;
+  email?: string;
+  allowed_pages?: string[];
+  actions?: Record<string, boolean>;
+}
 
 // ── Main Layout ───────────────────────────────────────────────────────────────
 const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -101,11 +111,13 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
       const res = await api.get('/hr/alerts');
       return res.data;
     },
-    refetchInterval: 60000
+    refetchInterval: 15000
   });
-  const [user, setUser] = React.useState<{ name: string; role: string; email?: string } | null>(null);
+
+  const [user, setUser] = React.useState<UserType | null>(null);
   const [loading, setLoading] = React.useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   React.useEffect(() => {
     const fetchUser = async () => {
@@ -129,6 +141,14 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
     navigate('/login');
   };
 
+  const isAdmin = user?.role === 'ADMIN';
+
+  const isPageAllowed = (pageKey: string): boolean => {
+    if (isAdmin) return true;
+    if (!user?.allowed_pages || !Array.isArray(user.allowed_pages)) return false;
+    return user.allowed_pages.includes(pageKey);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -137,7 +157,36 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
     );
   }
 
-  const isAdmin = user?.role === 'ADMIN';
+  // ── Route Guard Check ──
+  const currentPath = location.pathname;
+  const routePageMap: Record<string, string> = {
+    '/dashboard/sales': 'sales',
+    '/dashboard/orders': 'orders',
+    '/dashboard/items': 'items',
+    '/dashboard/containers': 'containers',
+    '/dashboard/datasheets': 'datasheets',
+    '/dashboard/customers': 'customers',
+    '/dashboard/expenses': 'expenses',
+    '/dashboard/exchange-rates': 'exchange-rates',
+    '/dashboard/users': 'users',
+    '/dashboard/settings': 'settings',
+  };
+
+  let pageKey = 'dashboard';
+  for (const [route, key] of Object.entries(routePageMap)) {
+    if (currentPath === route || currentPath.startsWith(route + '/')) {
+      pageKey = key;
+      break;
+    }
+  }
+
+  const hasAccessToCurrentPage = isPageAllowed(pageKey);
+
+  // Group pages for section rendering
+  const hasSalesGroup = isPageAllowed('sales') || isPageAllowed('orders') || isPageAllowed('items') || isPageAllowed('containers') || isPageAllowed('datasheets') || isPageAllowed('customers');
+  const hasFinanceGroup = isPageAllowed('expenses') || isPageAllowed('exchange-rates');
+  const hasSettingsGroup = isPageAllowed('users') || isPageAllowed('settings');
+
   // ── Sidebar inner content (shared between desktop + mobile) ──
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -163,24 +212,38 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
       {/* Nav */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto">
-        <NavSection label="الرئيسية" />
-        <NavItem icon={LayoutDashboard} label="لوحة التحكم" to="/dashboard" />
+        {isPageAllowed('dashboard') && (
+          <>
+            <NavSection label="الرئيسية" />
+            <NavItem icon={LayoutDashboard} label="لوحة التحكم" to="/dashboard" />
+          </>
+        )}
         
-        <NavSection label="المبيعات والمخزون" />
-        <NavItem icon={ShoppingCart} label="نقطة البيع (POS)" to="/dashboard/sales" />
-        <NavItem icon={FileText} label="سجل المبيعات" to="/dashboard/orders" />
-        <NavItem icon={Package} label="المنتجات والمخزون" to="/dashboard/items" />
-        <NavItem icon={FileSpreadsheet} label="ملفات الداتا شير" to="/dashboard/datasheets" />
-        <NavItem icon={Users} label="العملاء والديون" to="/dashboard/customers" />
+        {hasSalesGroup && (
+          <>
+            <NavSection label="المبيعات والمخزون" />
+            {isPageAllowed('sales') && <NavItem icon={ShoppingCart} label="نقطة البيع (POS)" to="/dashboard/sales" />}
+            {isPageAllowed('orders') && <NavItem icon={FileText} label="سجل المبيعات" to="/dashboard/orders" />}
+            {isPageAllowed('items') && <NavItem icon={Package} label="المنتجات والمخزون" to="/dashboard/items" />}
+            {isPageAllowed('containers') && <NavItem icon={Boxes} label="الحاويات والشحنات" to="/dashboard/containers" />}
+            {isPageAllowed('datasheets') && <NavItem icon={FileSpreadsheet} label="ملفات الداتا شيت" to="/dashboard/datasheets" />}
+            {isPageAllowed('customers') && <NavItem icon={Users} label="العملاء والديون" to="/dashboard/customers" />}
+          </>
+        )}
         
-        {isAdmin && (
+        {hasFinanceGroup && (
           <>
             <NavSection label="المحاسبة والتقارير" />
-            <NavItem icon={TrendingDown} label="المصروفات" to="/dashboard/expenses" />
-            <NavItem icon={DollarSign} label="سجل سعر الصرف" to="/dashboard/exchange-rates" />
+            {isPageAllowed('expenses') && <NavItem icon={TrendingDown} label="المصروفات" to="/dashboard/expenses" />}
+            {isPageAllowed('exchange-rates') && <NavItem icon={DollarSign} label="سجل سعر الصرف" to="/dashboard/exchange-rates" />}
+          </>
+        )}
+
+        {hasSettingsGroup && (
+          <>
             <NavSection label="الإعدادات والموارد البشرية" />
-            <NavItem icon={UserCog} label="الموظفين والمستخدمين" to="/dashboard/users" />
-            <NavItem icon={Settings} label="إعدادات النظام" to="/dashboard/settings" />
+            {isPageAllowed('users') && <NavItem icon={UserCog} label="الموظفين والمستخدمين" to="/dashboard/users" />}
+            {isPageAllowed('settings') && <NavItem icon={Settings} label="إعدادات النظام" to="/dashboard/settings" />}
           </>
         )}
       </nav>
@@ -281,21 +344,73 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </button>
               
               {isNotificationsOpen && (
-                <div className="absolute left-0 mt-2 w-80 bg-card border border-border shadow-xl rounded-xl z-50 p-2">
-                  <div className="text-sm font-bold p-2 border-b border-border/50 mb-2">التنبيهات الذكية (HR)</div>
+                <div className="absolute left-0 mt-2 w-84 sm:w-96 bg-card border border-border shadow-2xl rounded-2xl z-50 p-3 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between p-2 border-b border-border/60 mb-2">
+                    <span className="text-sm font-black flex items-center gap-1.5 text-foreground">
+                      <Bell className="w-4 h-4 text-primary" />
+                      التنبيهات الذكية وإشعارات المخزون
+                    </span>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {alerts.length} تنبيه
+                    </span>
+                  </div>
                   {alerts.length === 0 ? (
-                    <div className="p-4 text-center text-xs text-muted-foreground">لا توجد تنبيهات حالياً</div>
+                    <div className="p-6 text-center text-xs text-muted-foreground font-semibold">
+                      🎉 لا توجد تنبيهات جديدة حالياً، المخزون والعمليات بحالة ممتازة!
+                    </div>
                   ) : (
-                    <div className="space-y-1 max-h-64 overflow-y-auto">
-                      {alerts.map((alert: any, i: number) => (
-                        <div key={i} className="p-2.5 rounded-lg bg-secondary/30 hover:bg-secondary/60 transition-colors">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`w-2 h-2 rounded-full ${alert.type === 'SALARY' ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
-                            <span className="text-xs font-bold">{alert.title}</span>
+                    <div className="space-y-1.5 max-h-80 overflow-y-auto pr-0.5">
+                      {alerts.map((alert: any, i: number) => {
+                        const isStockLow = alert.type === 'STOCK_LOW';
+                        const isStockOut = alert.type === 'STOCK_OUT';
+                        const isSalary = alert.type === 'SALARY';
+                        
+                        return (
+                          <div
+                            key={i}
+                            onClick={() => {
+                              if (alert.link) {
+                                navigate(alert.link);
+                                setIsNotificationsOpen(false);
+                              }
+                            }}
+                            className={`p-2.5 rounded-xl transition-all border ${
+                              alert.link ? 'cursor-pointer hover:scale-[1.01]' : ''
+                            } ${
+                              isStockOut 
+                                ? 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/15' 
+                                : isStockLow 
+                                ? 'bg-amber-500/10 border-amber-500/30 hover:bg-amber-500/15' 
+                                : 'bg-secondary/40 border-border/50 hover:bg-secondary/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                                  isStockOut ? 'bg-rose-500 animate-pulse' :
+                                  isStockLow ? 'bg-amber-500 animate-pulse' :
+                                  isSalary ? 'bg-emerald-500' : 'bg-blue-500'
+                                }`} />
+                                <span className={`text-xs font-black ${
+                                  isStockOut ? 'text-rose-700 dark:text-rose-300' :
+                                  isStockLow ? 'text-amber-800 dark:text-amber-200' :
+                                  'text-foreground'
+                                }`}>
+                                  {alert.title}
+                                </span>
+                              </div>
+                              {alert.link && (
+                                <span className="text-[10px] font-bold text-primary underline underline-offset-2 shrink-0">
+                                  عرض التفاصيل ←
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-foreground/80 leading-relaxed pr-4 font-medium">
+                              {alert.message}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground pr-4 leading-relaxed">{alert.message}</p>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -320,7 +435,34 @@ const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) 
             ? "p-2.5 sm:p-3 md:p-4 overflow-hidden h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)]"
             : "p-4 md:p-6 overflow-auto"
         )}>
-          {children}
+          {hasAccessToCurrentPage ? (
+            children
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center min-h-[60vh] max-w-lg mx-auto">
+              <div className="w-20 h-20 rounded-3xl bg-rose-500/10 text-rose-600 flex items-center justify-center mb-5 shadow-inner">
+                <ShieldAlert className="w-10 h-10" />
+              </div>
+              <h2 className="text-2xl font-black text-foreground">لا تملك صلاحية للوصول إلى هذه الصفحة</h2>
+              <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                تم تقييد الوصول إلى هذا القسم بناءً على الصلاحيات المحددة لمسماك الوظيفي الحالي ({user?.role || 'مستخدم'}).
+                إذا كنت تعتقد أن هذا خطأ، يرجى مراجعة مدير النظام.
+              </p>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    if (isPageAllowed('dashboard')) navigate('/dashboard');
+                    else if (isPageAllowed('sales')) navigate('/dashboard/sales');
+                    else if (isPageAllowed('orders')) navigate('/dashboard/orders');
+                    else if (isPageAllowed('items')) navigate('/dashboard/items');
+                    else navigate('/dashboard');
+                  }}
+                  className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl font-bold text-sm shadow-md hover:bg-primary/90 transition-all"
+                >
+                  العودة للصفحة المتاحة
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </main>
     </div>

@@ -43,7 +43,52 @@ class AuthController extends Controller
 
     public function user(Request $request)
     {
-        return response()->json($request->user());
+        $user = $request->user();
+        
+        $rolesData = null;
+        $raw = \App\Models\Setting::get('roles_permissions');
+        if ($raw) {
+            $rolesData = json_decode($raw, true);
+        }
+        $roles = $rolesData['roles'] ?? \App\Http\Controllers\Api\SettingsController::getDefaultRoles();
+        
+        $userRole = $user->role;
+        $roleMatch = null;
+        foreach ($roles as $r) {
+            if ($r['id'] === $userRole || (isset($r['name']) && $r['name'] === $userRole)) {
+                $roleMatch = $r;
+                break;
+            }
+        }
+        
+        if ($userRole === 'ADMIN' || ($roleMatch && $roleMatch['id'] === 'ADMIN')) {
+            $allowedPages = ['dashboard', 'sales', 'orders', 'items', 'datasheets', 'customers', 'expenses', 'exchange-rates', 'users', 'settings'];
+            $actions = [
+                'pos_edit_price' => true,
+                'pos_apply_discount' => true,
+                'inventory_edit' => true,
+                'orders_delete' => true,
+                'view_profits' => true,
+            ];
+        } else if ($roleMatch) {
+            $allowedPages = $roleMatch['allowed_pages'] ?? [];
+            $actions = $roleMatch['actions'] ?? [];
+        } else {
+            $allowedPages = ['sales', 'orders'];
+            $actions = [
+                'pos_edit_price' => false,
+                'pos_apply_discount' => false,
+                'inventory_edit' => false,
+                'orders_delete' => false,
+                'view_profits' => false,
+            ];
+        }
+
+        $userData = $user->toArray();
+        $userData['allowed_pages'] = $allowedPages;
+        $userData['actions'] = $actions;
+
+        return response()->json($userData);
     }
 
     public function updateProfile(Request $request)
@@ -82,6 +127,10 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role,
+                'salary' => $user->salary,
+                'join_date' => $user->join_date ? $user->join_date->toDateString() : null,
+                'shift_start' => $user->shift_start,
+                'shift_end' => $user->shift_end,
                 'face_id' => $user->face_id ? true : false,
             ];
         }));
@@ -91,16 +140,27 @@ class AuthController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:6',
-            'role' => 'required|in:ADMIN,SELLER,ACCOUNTANT,CHEF',
+            'email' => 'nullable|email|unique:users,email',
+            'password' => 'nullable|string|min:4',
+            'role' => 'nullable|string|max:100',
         ]);
+
+        $email = $request->email;
+        if (!$email) {
+            $email = 'user_' . time() . '_' . rand(100, 999) . '@princeprolux.local';
+        }
+
+        $password = $request->password ?: '123456';
 
         $user = User::create([
             'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'role' => $request->role,
+            'email' => $email,
+            'password' => Hash::make($password),
+            'role' => $request->role ?: 'SELLER',
+            'salary' => $request->salary ?? 0,
+            'join_date' => $request->join_date ?: now()->toDateString(),
+            'shift_start' => $request->shift_start,
+            'shift_end' => $request->shift_end,
         ]);
 
         return response()->json([
@@ -108,6 +168,10 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role,
+            'salary' => $user->salary,
+            'join_date' => $user->join_date ? $user->join_date->toDateString() : null,
+            'shift_start' => $user->shift_start,
+            'shift_end' => $user->shift_end,
         ], 201);
     }
 
@@ -115,18 +179,33 @@ class AuthController extends Controller
     {
         $request->validate([
             'name' => 'sometimes|string|max:255',
-            'email' => 'sometimes|email|unique:users,email,' . $user->id,
-            'role' => 'sometimes|in:ADMIN,SELLER,ACCOUNTANT,CHEF',
+            'email' => 'nullable|email|unique:users,email,' . $user->id,
+            'role' => 'nullable|string|max:100',
         ]);
 
         if ($request->has('name')) {
             $user->name = $request->name;
         }
-        if ($request->has('email')) {
+        if ($request->has('email') && $request->email) {
             $user->email = $request->email;
         }
         if ($request->has('role')) {
             $user->role = $request->role;
+        }
+        if ($request->has('password') && !empty($request->password)) {
+            $user->password = Hash::make($request->password);
+        }
+        if ($request->has('salary')) {
+            $user->salary = $request->salary;
+        }
+        if ($request->has('join_date')) {
+            $user->join_date = $request->join_date;
+        }
+        if ($request->has('shift_start')) {
+            $user->shift_start = $request->shift_start;
+        }
+        if ($request->has('shift_end')) {
+            $user->shift_end = $request->shift_end;
         }
 
         $user->save();
@@ -136,6 +215,10 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'role' => $user->role,
+            'salary' => $user->salary,
+            'join_date' => $user->join_date ? $user->join_date->toDateString() : null,
+            'shift_start' => $user->shift_start,
+            'shift_end' => $user->shift_end,
         ]);
     }
 

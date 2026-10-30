@@ -110,6 +110,40 @@ class EmployeeController extends Controller
                 'date' => $today->toDateString()
             ];
         }
+
+        // 3. Low stock and out-of-stock inventory alerts
+        $lowStockProducts = \App\Models\Product::whereNotNull('stock')
+            ->where(function($q) {
+                $q->whereColumn('stock', '<=', 'min_threshold')
+                  ->orWhere(function($sub) {
+                      $sub->whereNull('min_threshold')->where('stock', '<=', 5);
+                  });
+            })
+            ->get();
+
+        foreach ($lowStockProducts as $p) {
+            $threshold = (float)($p->min_threshold ?? 5);
+            $stock = (float)$p->stock;
+            if ($stock <= 0) {
+                $alerts[] = [
+                    'type' => 'STOCK_OUT',
+                    'title' => 'نفاذ مخزون بالكامل',
+                    'message' => "المنتج '{$p->name}' نفذ بالكامل من المخزون (0 قطعة)!",
+                    'product_id' => $p->id,
+                    'link' => '/dashboard/items?stockFilter=out_of_stock',
+                    'date' => $today->toDateString()
+                ];
+            } else {
+                $alerts[] = [
+                    'type' => 'STOCK_LOW',
+                    'title' => 'تنبيه حد إعادة الطلب',
+                    'message' => "المنتج '{$p->name}' أوشك على النفاد (المتبقي: {$stock} قطعة، حد الطلب: {$threshold})",
+                    'product_id' => $p->id,
+                    'link' => '/dashboard/items?stockFilter=low_stock',
+                    'date' => $today->toDateString()
+                ];
+            }
+        }
         
         return response()->json($alerts);
     }

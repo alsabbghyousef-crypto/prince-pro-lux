@@ -1,5 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { Plus, Tag, Package, ImageIcon, Loader2, Save, X, Pencil, Trash2, AlertTriangle, Search, History, Upload, Download, ChevronRight, ChevronLeft } from 'lucide-react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Tag, Package, ImageIcon, Loader2, Save, X, Pencil, Trash2, AlertTriangle, Search, History, Upload, Download, ChevronRight, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
@@ -27,6 +29,8 @@ interface Product {
   category_id: number | null;
   category: string;
   image?: string;
+  min_threshold?: number;
+  reorder_level?: number;
 }
 
 interface Category {
@@ -127,14 +131,68 @@ const ItemsPage: React.FC = () => {
 
   const loading = loadingProducts || loadingCategories;
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlStockFilter = searchParams.get('stockFilter');
+  const [stockFilter, setStockFilter] = useState<'all' | 'low_stock' | 'out_of_stock' | 'in_stock'>(
+    (urlStockFilter === 'low_stock' || urlStockFilter === 'out_of_stock' || urlStockFilter === 'in_stock')
+      ? urlStockFilter
+      : 'all'
+  );
+
+  useEffect(() => {
+    const s = searchParams.get('stockFilter');
+    if (s === 'low_stock' || s === 'out_of_stock' || s === 'in_stock') {
+      setStockFilter(s);
+    } else if (!s) {
+      setStockFilter('all');
+    }
+  }, [searchParams]);
+
+  const handleStockFilterChange = (filter: 'all' | 'low_stock' | 'out_of_stock' | 'in_stock') => {
+    setStockFilter(filter);
+    setPage(1);
+    const newParams = new URLSearchParams(searchParams);
+    if (filter === 'all') {
+      newParams.delete('stockFilter');
+    } else {
+      newParams.set('stockFilter', filter);
+    }
+    setSearchParams(newParams, { replace: true });
+  };
+
+  const stockCounts = useMemo(() => {
+    let low = 0;
+    let out = 0;
+    let healthy = 0;
+    products.forEach(p => {
+      const s = Number(p.stock || 0);
+      const th = Number(p.reorder_level ?? p.min_threshold ?? 5);
+      if (s <= 0) {
+        out++;
+      } else if (s <= th) {
+        low++;
+      } else {
+        healthy++;
+      }
+    });
+    return { all: products.length, low, out, healthy };
+  }, [products]);
+
   // Memoized Filtered Products
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
       const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
       const matchCategory = selectedCategory === "all" || String(p.category_id) === selectedCategory;
-      return matchSearch && matchCategory;
+      if (!matchSearch || !matchCategory) return false;
+
+      const s = Number(p.stock || 0);
+      const th = Number(p.reorder_level ?? p.min_threshold ?? 5);
+      if (stockFilter === 'low_stock') return s > 0 && s <= th;
+      if (stockFilter === 'out_of_stock') return s <= 0;
+      if (stockFilter === 'in_stock') return s > th;
+      return true;
     });
-  }, [products, searchQuery, selectedCategory]);
+  }, [products, searchQuery, selectedCategory, stockFilter]);
 
   // Report Modals State
   const [isInventoryReportOpen, setIsInventoryReportOpen] = useState(false);
@@ -147,7 +205,7 @@ const ItemsPage: React.FC = () => {
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   
   const [productForm, setProductForm] = useState({
-    name: '', model: '', color: '', price: '', cost_price: '', currency: 'SYP', units_per_carton: '', category_id: '', stock: '0', addedStock: '', addedCartons: '', addedPieces: '', manualCartons: '', manualPieces: '', imageFile: null as File | null
+    name: '', model: '', color: '', price: '', cost_price: '', currency: 'SYP', units_per_carton: '', category_id: '', stock: '0', reorder_level: '5', addedStock: '', addedCartons: '', addedPieces: '', manualCartons: '', manualPieces: '', imageFile: null as File | null
   });
   const [autoCalcPrices, setAutoCalcPrices] = useState(true);
 
@@ -196,7 +254,9 @@ const ItemsPage: React.FC = () => {
           units_per_carton: newProduct.units_per_carton ? Number(newProduct.units_per_carton) : undefined,
           stock: Number(newProduct.stock || 0), 
           category_id: Number(newProduct.category_id),
-          category: catName
+          category: catName,
+          min_threshold: Number(newProduct.reorder_level || newProduct.min_threshold || 5),
+          reorder_level: Number(newProduct.reorder_level || newProduct.min_threshold || 5)
         };
 
         if (editingProduct) {
@@ -479,14 +539,15 @@ const ItemsPage: React.FC = () => {
     setEditingProduct(product);
     setProductForm({
       name: product.name,
-        model: product.model || '',
-        color: product.color || '',
+      model: product.model || '',
+      color: product.color || '',
       price: String(product.price),
       cost_price: product.cost_price ? String(product.cost_price) : '',
       currency: product.currency || 'SYP',
       units_per_carton: product.units_per_carton ? String(product.units_per_carton) : '',
       category_id: String(product.category_id || ''),
       stock: String(product.stock || '0'),
+      reorder_level: String(product.reorder_level ?? product.min_threshold ?? 5),
       addedStock: '',
       addedCartons: '',
       addedPieces: '',
@@ -499,7 +560,24 @@ const ItemsPage: React.FC = () => {
 
   const openNewProduct = useCallback(() => {
     setEditingProduct(null);
-    setProductForm({ name: '', model: '', color: '', price: '', cost_price: '', currency: 'SYP', units_per_carton: '', category_id: '', stock: '0', addedStock: '', addedCartons: '', addedPieces: '', manualCartons: '', manualPieces: '', imageFile: null });
+    setProductForm({
+      name: '',
+      model: '',
+      color: '',
+      price: '',
+      cost_price: '',
+      currency: 'SYP',
+      units_per_carton: '',
+      category_id: '',
+      stock: '0',
+      reorder_level: '5',
+      addedStock: '',
+      addedCartons: '',
+      addedPieces: '',
+      manualCartons: '',
+      manualPieces: '',
+      imageFile: null
+    });
     setShowProductModal(true);
   }, []);
 
@@ -513,6 +591,8 @@ const ItemsPage: React.FC = () => {
         finalStock = Number(editingProduct.stock || 0) + Number(productForm.addedStock);
     }
 
+    const reorderVal = Number(productForm.reorder_level || 5);
+
     // Trigger mutation in background
     saveProductMutation.mutate({
       ...productForm,
@@ -520,7 +600,9 @@ const ItemsPage: React.FC = () => {
       cost_price: productForm.cost_price ? Number(productForm.cost_price) : undefined,
       units_per_carton: productForm.units_per_carton ? Number(productForm.units_per_carton) : undefined,
       category_id: productForm.category_id ? Number(productForm.category_id) : undefined,
-      stock: finalStock
+      stock: finalStock,
+      reorder_level: reorderVal,
+      min_threshold: reorderVal
     });
   };
 
@@ -658,6 +740,82 @@ const ItemsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Stock Health Filter Tabs */}
+      {activeTab === 'products' && (
+        <div className="flex flex-wrap items-center gap-2 px-1 py-1">
+          <span className="text-xs font-bold text-muted-foreground me-1 flex items-center gap-1">
+            تصفية المخزون:
+          </span>
+          <button
+            onClick={() => handleStockFilterChange('all')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              stockFilter === 'all'
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "bg-secondary/60 hover:bg-secondary text-secondary-foreground"
+            )}
+          >
+            <span>جميع المنتجات</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/10 dark:bg-white/10 font-bold">
+              {stockCounts.all}
+            </span>
+          </button>
+          
+          <button
+            onClick={() => handleStockFilterChange('low_stock')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              stockFilter === 'low_stock'
+                ? "bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-500/30"
+                : "bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+            )}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>⚠️ أوشكت على النفاد (حد إعادة الطلب)</span>
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded-md font-black",
+              stockFilter === 'low_stock' ? "bg-white/20 text-white" : "bg-amber-500/25 text-amber-900 dark:text-amber-100"
+            )}>
+              {stockCounts.low}
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleStockFilterChange('out_of_stock')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              stockFilter === 'out_of_stock'
+                ? "bg-rose-500 text-white shadow-md shadow-rose-500/25 ring-2 ring-rose-500/30"
+                : "bg-rose-500/10 hover:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30"
+            )}
+          >
+            <span>🛑 نفذت من المخزون</span>
+            <span className={cn(
+              "text-[10px] px-1.5 py-0.5 rounded-md font-black",
+              stockFilter === 'out_of_stock' ? "bg-white/20 text-white" : "bg-rose-500/25 text-rose-900 dark:text-rose-100"
+            )}>
+              {stockCounts.out}
+            </span>
+          </button>
+
+          <button
+            onClick={() => handleStockFilterChange('in_stock')}
+            className={cn(
+              "px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              stockFilter === 'in_stock'
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-secondary/60 hover:bg-secondary text-secondary-foreground"
+            )}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span>متوفرة بوفرة</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-black/10 dark:bg-white/10 font-bold">
+              {stockCounts.healthy}
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Tables Area - No flashing loading spinner once data is fetched initially */}
       {loading && products.length === 0 ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>
@@ -683,8 +841,24 @@ const ItemsPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {paginatedProducts.map(product => (
-                    <tr key={product.id} className="hover:bg-secondary/30 transition-colors">
+                  {paginatedProducts.map(product => {
+                    const stockNum = Number(product.stock || 0);
+                    const threshold = Number(product.reorder_level ?? product.min_threshold ?? 5);
+                    const isOut = stockNum <= 0;
+                    const isLow = !isOut && stockNum <= threshold;
+
+                    return (
+                    <tr
+                      key={product.id}
+                      className={cn(
+                        "transition-all duration-150",
+                        isOut
+                          ? "bg-rose-500/[0.06] hover:bg-rose-500/10 border-r-4 border-r-rose-500"
+                          : isLow
+                          ? "bg-amber-500/[0.08] hover:bg-amber-500/15 border-r-4 border-r-amber-500"
+                          : "hover:bg-secondary/30"
+                      )}
+                    >
                       <td className="px-6 py-4">
                           <input type="checkbox" className="w-4 h-4 rounded border-border" 
                             checked={selectedIds.includes(product.id)}
@@ -695,15 +869,35 @@ const ItemsPage: React.FC = () => {
                           <img 
                             src={(api.defaults.baseURL?.replace('/api', '') || '') + (product.image.startsWith('/') ? product.image : '/' + product.image)} 
                             alt={product.name}
-                            className="w-8 h-8 rounded-full object-cover shrink-0 cursor-pointer border border-border shadow-sm hover:opacity-80 transition-opacity"
+                            className="w-9 h-9 rounded-full object-cover shrink-0 cursor-pointer border border-border shadow-sm hover:opacity-80 transition-opacity"
                             onClick={(e) => { e.stopPropagation(); setSelectedImage(product.image as string); }}
                           />
                         ) : (
-                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                            <Package className="w-4 h-4" />
+                          <div className={cn(
+                            "w-9 h-9 rounded-full flex items-center justify-center shrink-0",
+                            isOut ? "bg-rose-500/20 text-rose-600" : isLow ? "bg-amber-500/20 text-amber-600" : "bg-primary/10 text-primary"
+                          )}>
+                            {isLow ? <AlertTriangle className="w-4 h-4" /> : <Package className="w-4 h-4" />}
                           </div>
                         )}
-                        {product.name}
+                        <div className="flex flex-col">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span>{product.name}</span>
+                            {isLow && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30">
+                                ⚠️ أوشك على النفاد
+                              </span>
+                            )}
+                            {isOut && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30">
+                                🛑 نفذ من المخزون
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-muted-foreground font-normal">
+                            حد إعادة الطلب: {threshold} قطعة
+                          </span>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-muted-foreground">
                         <span className="bg-secondary px-2 py-0.5 rounded text-xs font-semibold">{product.category || '—'}</span>
@@ -720,7 +914,22 @@ const ItemsPage: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 font-bold text-muted-foreground" dir="ltr">{product.cost_price ? `${product.cost_price.toLocaleString()} ${product.currency || 'SYP'}` : '—'}</td>
                       <td className="px-6 py-4 font-bold text-emerald-600">{formatCurrency(product.price, product.currency)}</td>
-                      <td className="px-6 py-4 font-bold text-primary">{product.stock || 0}</td>
+                      <td className="px-6 py-4 font-bold">
+                        <div className="flex flex-col">
+                          <span className={cn(
+                            "text-base font-black flex items-center gap-1",
+                            isOut ? "text-rose-600" : isLow ? "text-amber-600" : "text-primary"
+                          )}>
+                            {isLow && <AlertTriangle className="w-3.5 h-3.5 shrink-0" />}
+                            {product.stock || 0} قطعة
+                          </span>
+                          {isLow && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                              (أقل من أو يساوي {threshold})
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button onClick={() => setProfileProductId(product.id)}
@@ -738,7 +947,7 @@ const ItemsPage: React.FC = () => {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                   {filteredProducts.length === 0 && (
                     <tr><td colSpan={5} className="px-6 py-16 text-center text-muted-foreground font-semibold">
                       لا توجد منتجات تطابق بحثك.
@@ -751,8 +960,24 @@ const ItemsPage: React.FC = () => {
         ) : (
           /* ── Products Grid ── */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {paginatedProducts.map(product => (
-              <div key={product.id} className="vercel-card p-4 flex flex-col gap-3 shadow-sm border border-border hover:shadow-md transition-shadow">
+            {paginatedProducts.map(product => {
+              const stockNum = Number(product.stock || 0);
+              const threshold = Number(product.reorder_level ?? product.min_threshold ?? 5);
+              const isOut = stockNum <= 0;
+              const isLow = !isOut && stockNum <= threshold;
+
+              return (
+              <div
+                key={product.id}
+                className={cn(
+                  "vercel-card p-4 flex flex-col gap-3 shadow-sm border transition-all duration-150",
+                  isOut
+                    ? "border-rose-500/40 bg-rose-500/[0.03] opacity-80"
+                    : isLow
+                    ? "border-amber-500/60 bg-amber-500/[0.04] ring-1 ring-amber-500/30 hover:shadow-md"
+                    : "border-border hover:shadow-md"
+                )}
+              >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     {product.image ? (
@@ -763,15 +988,35 @@ const ItemsPage: React.FC = () => {
                         onClick={(e) => { e.stopPropagation(); setSelectedImage(product.image as string); }}
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                        <Package className="w-5 h-5" />
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center shrink-0",
+                        isOut ? "bg-rose-500/20 text-rose-600" : isLow ? "bg-amber-500/20 text-amber-600" : "bg-primary/10 text-primary"
+                      )}>
+                        {isLow ? <AlertTriangle className="w-5 h-5" /> : <Package className="w-5 h-5" />}
                       </div>
                     )}
                     <div>
-                      <h3 className="font-bold">{product.name}</h3>
-                      <span className="bg-secondary px-2 py-0.5 rounded text-xs font-semibold text-muted-foreground inline-block mt-1">
-                        {product.category || '—'}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <h3 className="font-bold">{product.name}</h3>
+                        {isLow && (
+                          <span className="bg-amber-500/20 text-amber-800 dark:text-amber-200 text-[10px] font-black px-2 py-0.5 rounded-md border border-amber-500/30">
+                            ⚠️ أوشك على النفاد
+                          </span>
+                        )}
+                        {isOut && (
+                          <span className="bg-rose-500/20 text-rose-700 dark:text-rose-300 text-[10px] font-black px-2 py-0.5 rounded-md border border-rose-500/30">
+                            🛑 نفذ
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="bg-secondary px-2 py-0.5 rounded text-xs font-semibold text-muted-foreground inline-block">
+                          {product.category || '—'}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground font-medium">
+                          حد الطلب: {threshold}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -808,7 +1053,7 @@ const ItemsPage: React.FC = () => {
                   </button>
                 </div>
               </div>
-            ))}
+            );})}
             {filteredProducts.length === 0 && (
               <div className="col-span-full py-16 text-center text-muted-foreground font-semibold bg-secondary/20 rounded-xl border border-dashed border-border">
                 لا توجد منتجات تطابق بحثك.
@@ -1022,6 +1267,32 @@ const ItemsPage: React.FC = () => {
                       value={productForm.stock} onChange={e => setProductForm({...productForm, stock: e.target.value, addedStock: '', manualCartons: '', manualPieces: ''})} />
                     </div>
                   )}
+
+                  <div className="pt-4 mt-3 border-t border-amber-500/30 bg-amber-500/5 -mx-4 -mb-4 p-4 rounded-b-2xl">
+                    <label className="block text-xs font-bold mb-1.5 text-foreground flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span>حد إعادة الطلب (تنبيه نقص المخزون)</span>
+                      </span>
+                      <span className="text-[11px] font-medium text-muted-foreground">تنبيه عند وصول الرصيد لهذا الحد أو أقل</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min="0"
+                        className="w-full bg-white dark:bg-black/40 border border-amber-500/40 h-12 rounded-xl px-4 text-lg font-bold text-right focus:ring-2 focus:ring-amber-500 outline-none transition-all pe-16"
+                        placeholder="مثال: 5"
+                        value={productForm.reorder_level}
+                        onChange={e => setProductForm({...productForm, reorder_level: e.target.value})}
+                      />
+                      <span className="absolute start-4 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">
+                        قطعة
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1.5">
+                      💡 عندما يقل المخزون عن هذا الحد، سيظهر المنتج بلون مميز في القائمة ونقطة البيع، وستصلك إشعارات تنبيهية تلقائية.
+                    </p>
+                  </div>
 
                 </div>
               </div>

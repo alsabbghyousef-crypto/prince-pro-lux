@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, X, Trash2, Clock, DollarSign, Briefcase, Calendar as CalendarIcon } from 'lucide-react';
+import { Plus, X, Trash2, Clock, DollarSign, Briefcase, Calendar as CalendarIcon, ShieldCheck } from 'lucide-react';
 import api from '../services/api';
 import ModalPortal from '../components/ui/ModalPortal';
 import ViewToggle from '../components/ui/ViewToggle';
@@ -13,6 +13,15 @@ interface User {
   join_date: string | null;
   shift_start: string | null;
   shift_end: string | null;
+}
+
+interface RoleDefinition {
+  id: string;
+  name: string;
+  description: string;
+  is_system?: boolean;
+  allowed_pages: string[];
+  actions?: Record<string, boolean>;
 }
 
 export default function UsersPage() {
@@ -32,7 +41,28 @@ export default function UsersPage() {
   const [leaveData, setLeaveData] = useState({ start_date: '', end_date: '', is_paid: false, reason: '' });
   const [paymentData, setPaymentData] = useState({ amount: 0, type: 'SALARY', month: new Date().getMonth()+1, year: new Date().getFullYear(), date: new Date().toISOString().split('T')[0], notes: '' });
 
-  const { data: users = [], isLoading } = useQuery<User[]>({ queryKey: ['users'], queryFn: async () => (await api.get('/users')).data, refetchInterval: 3000 });
+  // Users Query
+  const { data: users = [], isLoading } = useQuery<User[]>({ 
+    queryKey: ['users'], 
+    queryFn: async () => (await api.get('/users')).data, 
+    refetchInterval: 4000 
+  });
+
+  // Roles Query from Settings
+  const { data: rolesData } = useQuery<{ roles: RoleDefinition[] }>({
+    queryKey: ['roles-permissions'],
+    queryFn: async () => (await api.get('/settings/roles-permissions')).data,
+  });
+
+  const definedRoles = useMemo(() => {
+    return rolesData?.roles || [
+      { id: 'ADMIN', name: 'مدير النظام', description: 'كامل الصلاحيات', allowed_pages: ['dashboard', 'sales', 'orders', 'items', 'datasheets', 'customers', 'expenses', 'exchange-rates', 'users', 'settings'] },
+      { id: 'SELLER', name: 'كاشير / بائع', description: 'وصول للمبيعات ونقطة البيع', allowed_pages: ['sales', 'orders', 'customers'] },
+      { id: 'ACCOUNTANT', name: 'محاسب مالي', description: 'وصول للمحاسبة والتقارير', allowed_pages: ['dashboard', 'orders', 'customers', 'expenses', 'exchange-rates'] },
+      { id: 'INVENTORY', name: 'أمين مستودع', description: 'وصول للمنتجات والمخزون', allowed_pages: ['items', 'datasheets'] },
+    ];
+  }, [rolesData]);
+
   const { data: payrollData, refetch: refetchPayroll } = useQuery({
     queryKey: ['payroll', editingUser?.id],
     queryFn: async () => (await api.get(`/payroll/${editingUser?.id}`)).data,
@@ -181,13 +211,56 @@ export default function UsersPage() {
 
   const openEdit = (user: User) => {
     setEditingUser(user);
-    setFormData({ name: user.name, password: '', role: user.role || '', salary: user.salary || 0, join_date: user.join_date ? user.join_date.substring(0, 10) : '', shift_start: user.shift_start ? user.shift_start.substring(0, 5) : '', shift_end: user.shift_end ? user.shift_end.substring(0, 5) : '' });
+    setFormData({ 
+      name: user.name, 
+      password: '', 
+      role: user.role || (definedRoles[0]?.id || 'SELLER'), 
+      salary: user.salary || 0, 
+      join_date: user.join_date ? String(user.join_date).substring(0, 10) : '', 
+      shift_start: user.shift_start ? String(user.shift_start).substring(0, 5) : '', 
+      shift_end: user.shift_end ? String(user.shift_end).substring(0, 5) : '' 
+    });
     setModalTab('INFO');
     setIsModalOpen(true);
   };
 
-  const uniqueRoles = useMemo(() => Array.from(new Set(users.map((u) => u.role).filter(Boolean))) as string[], [users]);
-  const filteredUsers = useMemo(() => activeTab === 'ALL' ? users : users.filter((u) => u.role === activeTab), [users, activeTab]);
+  // Helper to resolve role name
+  const getRoleDisplayName = (roleVal: string | null) => {
+    if (!roleVal) return 'بدون مسمى';
+    const found = definedRoles.find(r => r.id === roleVal || r.name === roleVal);
+    return found ? found.name : roleVal;
+  };
+
+  // Filter tabs: combine defined roles
+  const filterTabs = useMemo(() => {
+    const list = [{ id: 'ALL', name: `الكل (${users.length})` }];
+    definedRoles.forEach(r => {
+      const count = users.filter(u => u.role === r.id || u.role === r.name).length;
+      list.push({ id: r.id, name: `${r.name} (${count})` });
+    });
+    return list;
+  }, [definedRoles, users]);
+
+  const filteredUsers = useMemo(() => {
+    if (activeTab === 'ALL') return users;
+    return users.filter((u) => u.role === activeTab || getRoleDisplayName(u.role) === activeTab);
+  }, [users, activeTab, definedRoles]);
+
+  const selectedRoleObj = definedRoles.find(r => r.id === formData.role || r.name === formData.role);
+
+  // Map page ids to Arabic names for preview
+  const PAGE_NAMES_MAP: Record<string, string> = {
+    dashboard: 'لوحة التحكم',
+    sales: 'نقطة البيع (POS)',
+    orders: 'سجل المبيعات',
+    items: 'المنتجات والمخزون',
+    datasheets: 'ملفات الداتا شيت',
+    customers: 'العملاء والديون',
+    expenses: 'المصروفات',
+    'exchange-rates': 'سعر الصرف',
+    users: 'الموظفين والمستخدمين',
+    settings: 'إعدادات النظام',
+  };
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground font-medium">جاري التحميل...</div>;
 
@@ -196,21 +269,45 @@ export default function UsersPage() {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
         <div>
           <h1 className="text-4xl font-bold tracking-tight text-foreground">الموارد البشرية والمستخدمين</h1>
-          <p className="text-muted-foreground mt-2 text-base font-medium">إدارة الرواتب، الإجازات، السلف وأوقات الدوام</p>
+          <p className="text-muted-foreground mt-2 text-base font-medium">إدارة الكادر، الرواتب، الإجازات، وتعيين المسميات الوظيفية</p>
         </div>
         <div className="flex items-center gap-4">
           <ViewToggle viewMode={viewMode} setViewMode={setViewMode} />
-          <button onClick={() => { setEditingUser(null); setFormData({ name: '', password: '', role: '', salary: 0, join_date: '', shift_start: '', shift_end: '' }); setModalTab('INFO'); setIsModalOpen(true); }} className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg shadow-primary/20 transition-all active:scale-95">
+          <button 
+            onClick={() => { 
+              setEditingUser(null); 
+              setFormData({ 
+                name: '', 
+                password: '', 
+                role: definedRoles[1]?.id || definedRoles[0]?.id || 'SELLER', 
+                salary: 0, 
+                join_date: new Date().toISOString().split('T')[0], 
+                shift_start: '09:00', 
+                shift_end: '18:00' 
+              }); 
+              setModalTab('INFO'); 
+              setIsModalOpen(true); 
+            }} 
+            className="bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-2 px-6 py-3 rounded-full font-bold shadow-lg shadow-primary/20 transition-all active:scale-95"
+          >
             <Plus className="w-5 h-5" /> موظف جديد
           </button>
         </div>
       </div>
 
+      {/* Filter Tabs by Defined Roles */}
       <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
-        <button onClick={() => setActiveTab('ALL')} className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-300 ${activeTab === 'ALL' ? 'bg-foreground text-background shadow-md transform scale-105' : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'}`}>الكل ({users.length})</button>
-        {uniqueRoles.map((role) => (
-          <button key={role} onClick={() => setActiveTab(role)} className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-300 ${activeTab === role ? 'bg-foreground text-background shadow-md transform scale-105' : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'}`}>
-            {role} ({users.filter((u) => u.role === role).length})
+        {filterTabs.map((tab) => (
+          <button 
+            key={tab.id} 
+            onClick={() => setActiveTab(tab.id)} 
+            className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-300 ${
+              activeTab === tab.id 
+                ? 'bg-foreground text-background shadow-md transform scale-105' 
+                : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'
+            }`}
+          >
+            {tab.name}
           </button>
         ))}
       </div>
@@ -218,14 +315,23 @@ export default function UsersPage() {
       {viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredUsers.map((user) => (
-            <div key={user.id} onClick={() => openEdit(user)} className="group relative bg-card/60 backdrop-blur-xl border border-border/50 rounded-[2rem] p-6 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden">
+            <div 
+              key={user.id} 
+              onClick={() => openEdit(user)} 
+              className="group relative bg-card/60 backdrop-blur-xl border border-border/50 rounded-[2rem] p-6 shadow-sm hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden"
+            >
               <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
               <div className="relative z-10">
                 <div className="flex items-center gap-4 mb-6">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-xl font-bold text-primary shadow-inner">{user.name.charAt(0)}</div>
+                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center text-xl font-bold text-primary shadow-inner">
+                    {user.name.charAt(0)}
+                  </div>
                   <div>
                     <h3 className="font-bold text-xl tracking-tight text-foreground">{user.name}</h3>
-                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground mt-1"><Briefcase className="w-4 h-4" />{user.role || 'بدون مسمى'}</span>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground mt-1 bg-secondary/50 px-2.5 py-1 rounded-full">
+                      <Briefcase className="w-3.5 h-3.5 text-primary" />
+                      {getRoleDisplayName(user.role)}
+                    </span>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -235,7 +341,7 @@ export default function UsersPage() {
                   </div>
                   <div className="bg-secondary/40 rounded-2xl p-4">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground mb-1"><Clock className="w-3.5 h-3.5" /> الدوام</div>
-                    <div className="font-bold text-foreground truncate text-sm mt-0.5">{user.shift_start ? user.shift_start.substring(0,5) : '-'} إلى {user.shift_end ? user.shift_end.substring(0,5) : '-'}</div>
+                    <div className="font-bold text-foreground truncate text-sm mt-0.5">{user.shift_start ? String(user.shift_start).substring(0,5) : '-'} إلى {user.shift_end ? String(user.shift_end).substring(0,5) : '-'}</div>
                   </div>
                 </div>
               </div>
@@ -249,9 +355,9 @@ export default function UsersPage() {
               <thead className="bg-secondary/40 text-muted-foreground font-semibold">
                 <tr>
                   <th className="px-6 py-4">الاسم</th>
-                  <th className="px-6 py-4">المنصب</th>
-                  <th className="px-6 py-4">رقم الهاتف</th>
+                  <th className="px-6 py-4">المسمى الوظيفي</th>
                   <th className="px-6 py-4">الراتب</th>
+                  <th className="px-6 py-4">أوقات الدوام</th>
                   <th className="px-6 py-4">إجراءات</th>
                 </tr>
               </thead>
@@ -259,9 +365,9 @@ export default function UsersPage() {
                 {filteredUsers.map((user) => (
                   <tr key={user.id} className="hover:bg-secondary/20 transition-colors">
                     <td className="px-6 py-4 font-bold text-foreground">{user.name}</td>
-                    <td className="px-6 py-4">{user.role || '-'}</td>
-                    <td className="px-6 py-4">-</td>
+                    <td className="px-6 py-4 font-semibold text-primary">{getRoleDisplayName(user.role)}</td>
                     <td className="px-6 py-4">{user.salary ? Number(user.salary).toLocaleString() : '0'} ل.س</td>
+                    <td className="px-6 py-4">{user.shift_start ? String(user.shift_start).substring(0,5) : '-'} إلى {user.shift_end ? String(user.shift_end).substring(0,5) : '-'}</td>
                     <td className="px-6 py-4">
                       <button onClick={() => openEdit(user)} className="text-primary hover:underline font-semibold">
                         تعديل
@@ -275,6 +381,7 @@ export default function UsersPage() {
         </div>
       )}
 
+      {/* Modal Dialog */}
       {isModalOpen && (
         <ModalPortal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)}>
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm transition-opacity duration-300">
@@ -295,20 +402,121 @@ export default function UsersPage() {
               <div className="p-8 max-h-[65vh] overflow-y-auto">
                 {modalTab === 'INFO' && (
                   <form id="user-form" onSubmit={handleSubmit} className="space-y-6">
-                    <div className="group"><label className="block text-sm font-semibold mb-2 text-muted-foreground">الاسم الكامل</label><input required type="text" className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="اسم الموظف"/></div>
-                    <div className="group"><label className="block text-sm font-semibold mb-2 text-muted-foreground">المسمى الوظيفي</label><input required type="text" list="roles-list" className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} placeholder="اكتب المسمى"/><datalist id="roles-list">{uniqueRoles.map((r) => <option key={r} value={r} />)}</datalist></div>
-                    <div className="grid grid-cols-2 gap-5">
-                      <div className="group"><label className="block text-sm font-semibold mb-2 text-muted-foreground">الراتب (ل.س)</label><input type="number" min="0" className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.salary} onChange={e => setFormData({...formData, salary: Number(e.target.value)})} /></div>
-                      <div className="group"><label className="block text-sm font-semibold mb-2 text-muted-foreground">تاريخ المباشرة</label><input type="date" className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.join_date} onChange={e => setFormData({...formData, join_date: e.target.value})} /></div>
+                    {/* Full Name */}
+                    <div className="group">
+                      <label className="block text-sm font-semibold mb-2 text-muted-foreground">الاسم الكامل</label>
+                      <input 
+                        required 
+                        type="text" 
+                        className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" 
+                        value={formData.name} 
+                        onChange={e => setFormData({...formData, name: e.target.value})} 
+                        placeholder="اسم الموظف"
+                      />
                     </div>
-                    <div className="bg-secondary/20 p-5 rounded-3xl border border-border/50">
-                      <h4 className="text-sm font-bold mb-4 text-foreground flex items-center gap-2"><Clock className="w-4 h-4 text-primary" /> أوقات الدوام</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-xs font-semibold mb-2 text-muted-foreground">من الساعة</label><input type="time" className="w-full bg-background border-0 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.shift_start} onChange={e => setFormData({...formData, shift_start: e.target.value})} /></div>
-                        <div><label className="block text-xs font-semibold mb-2 text-muted-foreground">إلى الساعة</label><input type="time" className="w-full bg-background border-0 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.shift_end} onChange={e => setFormData({...formData, shift_end: e.target.value})} /></div>
+
+                    {/* Role Selector (Connected to Defined Roles) */}
+                    <div className="group space-y-2">
+                      <label className="block text-sm font-semibold text-muted-foreground">
+                        المسمى الوظيفي (التصنيف)
+                      </label>
+                      <select 
+                        required 
+                        className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-bold focus:ring-2 focus:ring-primary outline-none cursor-pointer" 
+                        value={formData.role} 
+                        onChange={e => setFormData({...formData, role: e.target.value})}
+                      >
+                        {definedRoles.map(r => (
+                          <option key={r.id} value={r.id} className="bg-card text-foreground font-bold">
+                            {r.name} {r.id === 'ADMIN' ? '(كامل الصلاحيات)' : ''}
+                          </option>
+                        ))}
+                      </select>
+
+                      {/* Role Pages & Permissions Preview */}
+                      {selectedRoleObj && (
+                        <div className="p-3.5 rounded-2xl bg-primary/5 border border-primary/20 text-xs space-y-2">
+                          <div className="flex items-center gap-1.5 font-bold text-foreground">
+                            <ShieldCheck className="w-4 h-4 text-primary flex-shrink-0" />
+                            <span>الصفحات المتاحة لهذا المسمى في القائمة:</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {selectedRoleObj.allowed_pages.map(pid => (
+                              <span key={pid} className="px-2 py-0.5 bg-background border border-border/60 rounded-md text-[11px] font-bold text-foreground shadow-xs">
+                                {PAGE_NAMES_MAP[pid] || pid}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">
+                            {selectedRoleObj.description}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Salary & Join Date */}
+                    <div className="grid grid-cols-2 gap-5">
+                      <div className="group">
+                        <label className="block text-sm font-semibold mb-2 text-muted-foreground">الراتب (ل.س)</label>
+                        <input 
+                          type="number" 
+                          min="0" 
+                          className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" 
+                          value={formData.salary} 
+                          onChange={e => setFormData({...formData, salary: Number(e.target.value)})} 
+                        />
+                      </div>
+                      <div className="group">
+                        <label className="block text-sm font-semibold mb-2 text-muted-foreground">تاريخ المباشرة</label>
+                        <input 
+                          type="date" 
+                          className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" 
+                          value={formData.join_date} 
+                          onChange={e => setFormData({...formData, join_date: e.target.value})} 
+                        />
                       </div>
                     </div>
-                    <div className="group pt-2"><label className="block text-sm font-semibold mb-2 text-muted-foreground">{editingUser ? 'كلمة المرور (لولوج النظام - اختياري)' : 'كلمة المرور (اختياري لولوج النظام)'}</label><input type={editingUser ? "text" : "password"} placeholder={editingUser ? "اتركه فارغاً لعدم التغيير" : "أدخل كلمة مرور إن أردت إعطاءه وصول للنظام"} className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} /></div>
+
+                    {/* Shift Times */}
+                    <div className="bg-secondary/20 p-5 rounded-3xl border border-border/50">
+                      <h4 className="text-sm font-bold mb-4 text-foreground flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-primary" /> أوقات الدوام
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold mb-2 text-muted-foreground">من الساعة</label>
+                          <input 
+                            type="time" 
+                            className="w-full bg-background border-0 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary outline-none" 
+                            value={formData.shift_start} 
+                            onChange={e => setFormData({...formData, shift_start: e.target.value})} 
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold mb-2 text-muted-foreground">إلى الساعة</label>
+                          <input 
+                            type="time" 
+                            className="w-full bg-background border-0 rounded-xl px-4 py-3 text-sm font-medium focus:ring-2 focus:ring-primary outline-none" 
+                            value={formData.shift_end} 
+                            onChange={e => setFormData({...formData, shift_end: e.target.value})} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="group pt-2">
+                      <label className="block text-sm font-semibold mb-2 text-muted-foreground">
+                        {editingUser ? 'كلمة المرور (اختياري لولوج النظام)' : 'كلمة المرور (اختياري لولوج النظام)'}
+                      </label>
+                      <input 
+                        type={editingUser ? "text" : "password"} 
+                        placeholder={editingUser ? "اتركه فارغاً لعدم التغيير" : "أدخل كلمة مرور إن أردت إعطاءه وصول للنظام"} 
+                        className="w-full bg-secondary/30 border-0 rounded-2xl px-4 py-3.5 text-base font-medium focus:ring-2 focus:ring-primary outline-none" 
+                        value={formData.password} 
+                        onChange={e => setFormData({...formData, password: e.target.value})} 
+                      />
+                    </div>
                   </form>
                 )}
 
@@ -390,8 +598,19 @@ export default function UsersPage() {
                   <button type="submit" form="user-form" disabled={saveMutation.isPending} className="flex-1 bg-foreground text-background hover:bg-foreground/90 font-bold py-4 rounded-2xl shadow-lg transition-all active:scale-95">
                     {saveMutation.isPending ? 'جاري الحفظ...' : 'حفظ التعديلات'}
                   </button>
-                  {editingUser && (
-                    <button type="button" onClick={() => { if(confirm('هل أنت متأكد من الحذف؟')) { deleteMutation.mutate(editingUser.id); setIsModalOpen(false); } }} className="bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground p-4 rounded-2xl font-bold transition-all active:scale-95"><Trash2 className="w-5 h-5" /></button>
+                  {editingUser && editingUser.id !== 1 && (
+                    <button 
+                      type="button" 
+                      onClick={() => { 
+                        if(confirm('هل أنت متأكد من حذف هذا الموظف؟')) { 
+                          deleteMutation.mutate(editingUser.id); 
+                          setIsModalOpen(false); 
+                        } 
+                      }} 
+                      className="bg-destructive/10 text-destructive hover:bg-destructive hover:text-destructive-foreground p-4 rounded-2xl font-bold transition-all active:scale-95"
+                    >
+                      <Trash2 className="w-5 h-5" />
+                    </button>
                   )}
                 </div>
               )}

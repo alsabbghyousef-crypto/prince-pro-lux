@@ -14,6 +14,7 @@ import {
   Loader2,
   Printer,
   AlertCircle,
+  AlertTriangle,
   ZoomIn
 } from 'lucide-react';
 import ModalPortal from '../components/ui/ModalPortal';
@@ -31,6 +32,8 @@ interface Product {
   image?: string;
   stock: number;
   units_per_carton?: number;
+  min_threshold?: number;
+  reorder_level?: number;
 }
 
 interface CartItem extends Product {
@@ -186,13 +189,25 @@ const POSPage = () => {
   const [discountValue, setDiscountValue] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [itemPaidStatus, setItemPaidStatus] = useState<Record<string, boolean>>({});
+  const [stockWarnings, setStockWarnings] = useState<Record<string, string | null>>({});
+  const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // Quick Add Product inside Checkout Modal
+  const [modalProductSearch, setModalProductSearch] = useState('');
+  const [isModalProductDropdownOpen, setIsModalProductDropdownOpen] = useState(false);
 
   const { data: products = [], isLoading: isLoadingProducts } = useQuery<Product[]>({
     queryKey: ['products'],
     queryFn: async () => (await api.get('/products')).data,
     refetchInterval: 3000,
   });
+
+  const modalFilteredProducts = React.useMemo(() => {
+    const q = modalProductSearch.trim().toLowerCase();
+    if (!q) return [];
+    return products.filter(p => p.name.toLowerCase().includes(q));
+  }, [products, modalProductSearch]);
 
   const { data: categories = [], isLoading: isLoadingCategories } = useQuery<{ id: string, name: string }[]>({
     queryKey: ['categories'],
@@ -209,40 +224,192 @@ const POSPage = () => {
   const loading = isLoadingProducts || isLoadingCategories || isLoadingCustomers;
 
 
+  const recalcPaidAmounts = (updatedCart: CartItem[]) => {
+    const checkedTotal = updatedCart.reduce((sum, item) => {
+      return sum + ((itemPaidStatus[item.id] ?? true) ? item.price * item.quantity : 0);
+    }, 0);
+    let disc = 0;
+    if (discountType === 'FIXED') {
+      disc = Number(discountValue) || 0;
+    } else if (discountType === 'PERCENTAGE') {
+      disc = (checkedTotal * (Number(discountValue) || 0)) / 100;
+    }
+    const newGrandTotal = Math.max(0, checkedTotal - disc);
+    if (!paidUsd || Number(paidUsd) === 0) {
+      setPaidSyp(String(Math.round(newGrandTotal * currentExchangeRate)));
+    } else {
+      const remainingUsd = Math.max(0, newGrandTotal - Number(paidUsd));
+      setPaidSyp(String(Math.round(remainingUsd * currentExchangeRate)));
+    }
+  };
+
   const addToCart = (product: Product) => {
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
         if (existing.quantity >= product.stock) {
-          showToast(`لا يوجد مخزون كافٍ من ${product.name}. المتوفر: ${product.stock}`);
+          showToast(`لا يوجد مخزون كافٍ من "${product.name}"! المتوفر في المخزون: ${product.stock} قطعة فقط.`);
           return prev;
         }
+        const newQ = existing.quantity + 1;
+        setQuantityInputs(qi => ({ ...qi, [product.id]: String(newQ) }));
         return prev.map(item =>
           item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+            ? { ...item, quantity: newQ }
             : item
         );
       }
       if (product.stock < 1) {
-        showToast(`لا يوجد مخزون كافٍ من ${product.name}. المتوفر: ${product.stock}`);
+        showToast(`لا يوجد مخزون كافٍ من "${product.name}"! المتوفر في المخزون: 0 قطعة.`);
         return prev;
       }
+      setQuantityInputs(qi => ({ ...qi, [product.id]: '1' }));
       return [...prev, { ...product, quantity: 1, originalPrice: product.price }];
     });
   };
 
-  const updateQuantity = (id: string, delta: number) => {
-    setCart(prev => prev.map(item => {
-      if (item.id === id) {
-        const newQ = item.quantity + delta;
-        if (newQ > item.stock) {
-          showToast(`لا يوجد مخزون كافٍ. المتوفر: ${item.stock}`);
-          return item;
-        }
-        return { ...item, quantity: Math.max(0, newQ) };
+  const removeFromCart = (id: string) => {
+    setCart(prev => {
+      const updated = prev.filter(item => item.id !== id);
+      if (updated.length === 0) {
+        setIsCheckoutOpen(false);
+      } else if (isCheckoutOpen) {
+        recalcPaidAmounts(updated);
       }
-      return item;
-    }).filter(item => item.quantity > 0));
+      return updated;
+    });
+    setQuantityInputs(prev => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+    setStockWarnings(prev => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+    setItemPaidStatus(prev => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
+  };
+
+  const applyQuantityUpdate = (id: string, newQ: number) => {
+    setCart(prev => {
+      const updated = prev.map(item => {
+        if (item.id === id) {
+          return { ...item, quantity: newQ };
+        }
+        return item;
+      });
+      if (isCheckoutOpen) {
+        recalcPaidAmounts(updated);
+      }
+      return updated;
+    });
+  };
+
+  const handleQuantityChange = (id: string, rawVal: string) => {
+    const cleanVal = rawVal.replace(/[^0-9]/g, '');
+    const product = products.find(p => p.id === id);
+    const itemInCart = cart.find(c => c.id === id);
+    const availableStock = product?.stock ?? itemInCart?.stock ?? 0;
+
+    if (cleanVal === '') {
+      setQuantityInputs(prev => ({ ...prev, [id]: '' }));
+      return;
+    }
+
+    const num = parseInt(cleanVal, 10);
+    if (num <= 0) {
+      removeFromCart(id);
+      return;
+    }
+
+    if (num > availableStock) {
+      const msg = `لا يوجد مخزون كافٍ من "${itemInCart?.name || 'المنتج'}"! الكمية المتاحة في المخزون هي ${availableStock} قطعة فقط.`;
+      showToast(msg);
+      setStockWarnings(prev => ({ 
+        ...prev, 
+        [id]: `المتوفر في المخزون: ${availableStock} قطعة فقط (الكمية المطلوبة ${num} غير متوفرة)` 
+      }));
+      const clamped = Math.max(1, availableStock);
+      setQuantityInputs(prev => ({ ...prev, [id]: String(clamped) }));
+      applyQuantityUpdate(id, clamped);
+    } else {
+      setStockWarnings(prev => ({ ...prev, [id]: null }));
+      setQuantityInputs(prev => ({ ...prev, [id]: String(num) }));
+      applyQuantityUpdate(id, num);
+    }
+  };
+
+  const handleQuantityBlur = (id: string) => {
+    const raw = quantityInputs[id];
+    if (raw === '' || parseInt(raw, 10) < 1) {
+      removeFromCart(id);
+      return;
+    }
+  };
+
+  const handleQuantityStep = (id: string, delta: number) => {
+    const product = products.find(p => p.id === id);
+    const itemInCart = cart.find(c => c.id === id);
+    const availableStock = product?.stock ?? itemInCart?.stock ?? 0;
+    const currentQ = itemInCart?.quantity ?? 1;
+    const nextQ = currentQ + delta;
+
+    if (delta > 0 && nextQ > availableStock) {
+      const msg = `لا يوجد مخزون كافٍ من "${itemInCart?.name || 'المنتج'}"! الكمية المتاحة في المخزون هي ${availableStock} قطعة فقط.`;
+      showToast(msg);
+      setStockWarnings(prev => ({ 
+        ...prev, 
+        [id]: `المتوفر في المخزون: ${availableStock} قطعة فقط` 
+      }));
+      return;
+    }
+
+    // When clicking minus on quantity 1 -> Remove item immediately!
+    if (nextQ < 1) {
+      removeFromCart(id);
+      return;
+    }
+
+    setStockWarnings(prev => ({ ...prev, [id]: null }));
+    setQuantityInputs(prev => ({ ...prev, [id]: String(nextQ) }));
+    applyQuantityUpdate(id, nextQ);
+  };
+
+  const updateQuantity = (id: string, delta: number) => {
+    setCart(prev => {
+      const itemToUpdate = prev.find(item => item.id === id);
+      if (!itemToUpdate) return prev;
+
+      const product = products.find(p => p.id === id);
+      const availableStock = product?.stock ?? itemToUpdate.stock ?? 0;
+      const nextQ = itemToUpdate.quantity + delta;
+
+      if (delta > 0 && nextQ > availableStock) {
+        showToast(`لا يوجد مخزون كافٍ من "${itemToUpdate.name}"! الكمية المتاحة في المخزون هي ${availableStock} قطعة فقط.`);
+        setStockWarnings(w => ({ ...w, [id]: `المتوفر في المخزون: ${availableStock} قطعة فقط` }));
+        return prev;
+      }
+
+      setStockWarnings(w => ({ ...w, [id]: null }));
+      setQuantityInputs(qi => ({ ...qi, [id]: String(Math.max(0, nextQ)) }));
+
+      const updated = prev.map(item => {
+        if (item.id === id) {
+          return { ...item, quantity: Math.max(0, nextQ) };
+        }
+        return item;
+      }).filter(item => item.quantity > 0);
+
+      if (isCheckoutOpen) {
+        recalcPaidAmounts(updated);
+      }
+      return updated;
+    });
   };
 
   const updateItemPrice = (id: string, newPrice: number) => {
@@ -252,22 +419,7 @@ const POSPage = () => {
         item.id === id ? { ...item, price: safePrice } : item
       );
       if (isCheckoutOpen) {
-        const checkedTotal = updated.reduce((sum, item) => {
-          return sum + ((itemPaidStatus[item.id] ?? true) ? item.price * item.quantity : 0);
-        }, 0);
-        let disc = 0;
-        if (discountType === 'FIXED') {
-          disc = Number(discountValue) || 0;
-        } else if (discountType === 'PERCENTAGE') {
-          disc = (checkedTotal * (Number(discountValue) || 0)) / 100;
-        }
-        const newGrandTotal = Math.max(0, checkedTotal - disc);
-        if (!paidUsd || Number(paidUsd) === 0) {
-          setPaidSyp(String(Math.round(newGrandTotal * currentExchangeRate)));
-        } else {
-          const remainingUsd = Math.max(0, newGrandTotal - Number(paidUsd));
-          setPaidSyp(String(Math.round(remainingUsd * currentExchangeRate)));
-        }
+        recalcPaidAmounts(updated);
       }
       return updated;
     });
@@ -281,9 +433,28 @@ const POSPage = () => {
     updateItemPrice(id, newUnitPrice);
   };
 
+  const lowStockCount = React.useMemo(() => {
+    return products.filter(p => {
+      const s = Number(p.stock || 0);
+      const th = Number(p.reorder_level ?? p.min_threshold ?? 5);
+      return s > 0 && s <= th;
+    }).length;
+  }, [products]);
+
   const filteredProducts = React.useMemo(() => {
     return products.filter(p => {
-      const matchesCategory = selectedCategory === 'all' || p.category_id === selectedCategory;
+      const s = Number(p.stock || 0);
+      const th = Number(p.reorder_level ?? p.min_threshold ?? 5);
+      
+      let matchesCategory = false;
+      if (selectedCategory === 'all') {
+        matchesCategory = true;
+      } else if (selectedCategory === 'low_stock') {
+        matchesCategory = s > 0 && s <= th;
+      } else {
+        matchesCategory = p.category_id === selectedCategory;
+      }
+
       const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesCategory && matchesSearch;
     });
@@ -400,6 +571,14 @@ const POSPage = () => {
     const calculatedDebt = debtCurrency === 'SYP' ? debtInUsd * currentExchangeRate : debtInUsd;
     const finalPaymentMethod = calculatedDebt > 0 ? 'DEBT' : paymentMethod;
 
+    // If CASH and user left paid amounts blank, auto-fill with exact total
+    let finalPaidUsd = Number(paidUsd || 0);
+    let finalPaidSyp = Number(paidSyp || 0);
+    if (finalPaymentMethod === 'CASH' && finalPaidUsd === 0 && finalPaidSyp === 0) {
+      finalPaidUsd = grandTotal;
+      finalPaidSyp = Math.round(grandTotal * currentExchangeRate);
+    }
+
     const payload = {
       items: cart.map(item => ({
         productId: item.id,
@@ -409,6 +588,7 @@ const POSPage = () => {
       })),
       total: cartTotal, // sending original total, backend handles discount
       currency: 'USD',
+      exchangeRate: currentExchangeRate || 13950,
       source: 'SHOP',
       customerName: customerName.trim() || null,
       customerPhone: customerPhone.trim() || null,
@@ -416,8 +596,8 @@ const POSPage = () => {
       customerId: selectedCustomerId || null,
       paymentMethod: finalPaymentMethod,
       paidAmount: grandTotal,
-      paidSyp: Number(paidSyp || 0),
-      paidUsd: Number(paidUsd || 0),
+      paidSyp: finalPaidSyp,
+      paidUsd: finalPaidUsd,
       debtAmount: calculatedDebt,
       debtCurrency: debtCurrency,
       discountType: discountType === 'NONE' ? null : discountType,
@@ -502,6 +682,20 @@ const POSPage = () => {
             >
               الكل
             </button>
+            {lowStockCount > 0 && (
+              <button
+                onClick={() => setSelectedCategory('low_stock')}
+                className={cn(
+                  'px-3.5 py-1.5 rounded-full text-xs sm:text-sm font-semibold whitespace-nowrap transition-colors flex items-center gap-1.5',
+                  selectedCategory === 'low_stock'
+                    ? 'bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-500/30'
+                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-500/30'
+                )}
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>أوشكت على النفاد ({lowStockCount})</span>
+              </button>
+            )}
             {categories.map((cat) => (
               <button
                 key={cat.id}
@@ -527,6 +721,8 @@ const POSPage = () => {
             {paginatedProducts.map((product) => {
               const inCartItem = cart.find(item => item.id === product.id);
               const isOutOfStock = product.stock <= 0;
+              const threshold = Number(product.reorder_level ?? product.min_threshold ?? 5);
+              const isLowStock = !isOutOfStock && product.stock <= threshold;
               const imageUrl = product.image
                 ? (api.defaults.baseURL?.replace('/api', '') || '') + (product.image.startsWith('/') ? product.image : '/' + product.image)
                 : null;
@@ -544,6 +740,8 @@ const POSPage = () => {
                     "group relative flex flex-col justify-between p-3 rounded-2xl border transition-all duration-200 select-none cursor-pointer bg-card overflow-hidden",
                     isOutOfStock
                       ? "opacity-60 cursor-not-allowed border-dashed border-border"
+                      : isLowStock
+                      ? "border-amber-500/60 bg-amber-500/[0.04] ring-1 ring-amber-500/30 hover:border-amber-500 hover:shadow-lg"
                       : "hover:shadow-lg hover:border-primary/50 border-border/70",
                     inCartItem && "ring-2 ring-primary border-primary/40 bg-primary/[0.02]"
                   )}
@@ -555,16 +753,17 @@ const POSPage = () => {
                         "text-[10px] md:text-xs font-bold px-2.5 py-0.5 rounded-lg truncate max-w-[80%] flex items-center gap-1",
                         isOutOfStock
                           ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20"
-                          : product.stock < 5
-                          ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                          : isLowStock
+                          ? "bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/40 font-black animate-pulse"
                           : "bg-secondary text-foreground/80 border border-border/50"
                       )}
-                      title={`مخزون: ${product.stock}`}
+                      title={`مخزون: ${product.stock} (حد الطلب: ${threshold})`}
                     >
                       {isOutOfStock ? (
                         'نفذت الكمية'
                       ) : (
                         <>
+                          {isLowStock && <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />}
                           <span className="font-semibold">مخزون:</span>
                           <span dir="ltr" className="font-black">{product.stock}</span>
                           {product.units_per_carton && product.units_per_carton > 0 ? (
@@ -737,17 +936,29 @@ const POSPage = () => {
                 </div>
                 
                 <div className="flex flex-col items-end gap-2">
-                  <div className="flex items-center gap-2 bg-background rounded-lg border border-border p-1">
+                  <div className="flex items-center gap-1 bg-background rounded-lg border border-border p-1">
                     <button
+                      type="button"
                       onClick={() => updateQuantity(item.id, -1)}
-                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-secondary text-muted-foreground"
+                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-secondary text-muted-foreground font-bold hover:text-foreground transition-colors"
+                      title="تقليل الكمية"
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-                    <span className="text-xs font-bold w-4 text-center">{item.quantity}</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={quantityInputs[item.id] !== undefined ? quantityInputs[item.id] : item.quantity}
+                      onChange={(e) => handleQuantityChange(item.id, e.target.value)}
+                      onBlur={() => handleQuantityBlur(item.id)}
+                      className="w-10 h-6 text-xs font-bold bg-transparent text-center outline-none border border-transparent focus:border-primary rounded"
+                      title="أدخل الكمية يدوياً باليد"
+                    />
                     <button
+                      type="button"
                       onClick={() => updateQuantity(item.id, 1)}
-                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-secondary text-muted-foreground"
+                      className="w-6 h-6 flex items-center justify-center rounded-md hover:bg-secondary text-muted-foreground font-bold hover:text-foreground transition-colors"
+                      title="زيادة الكمية"
                     >
                       <Plus className="w-3 h-3" />
                     </button>
@@ -870,54 +1081,262 @@ const POSPage = () => {
                 </div>
 
                 {/* Items Paid Checklist & Custom Pricing */}
-                <div className="bg-secondary/20 p-4 rounded-xl border border-border space-y-2.5">
+                <div className="bg-secondary/20 p-4 rounded-xl border border-border space-y-3">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="text-xs font-bold text-muted-foreground uppercase">القطع والمحاسبة</p>
-                    <span className="text-[11px] text-primary/80 font-bold">يمكنك تحديد/تعديل سعر أي منتج هنا</span>
+                    <p className="text-xs font-bold text-muted-foreground uppercase">القطع والمحاسبة ({cart.length})</p>
+                    <span className="text-[11px] text-primary/80 font-bold">يمكنك تعديل الأسعار والكميات أو حذف أي صنف</span>
                   </div>
-                  {cart.map(item => (
+
+                  {/* 🔍 Quick Add Product by Name inside Modal */}
+                  <div className="relative">
+                    <div className="relative">
+                      <Search className="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="🔍 بحث عن منتج بالاسم لإضافته مباشرة إلى هذه الفاتورة..."
+                        value={modalProductSearch}
+                        onChange={e => {
+                          setModalProductSearch(e.target.value);
+                          setIsModalProductDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsModalProductDropdownOpen(true)}
+                        className="w-full bg-background border border-primary/30 focus:border-primary focus:ring-2 focus:ring-primary/20 h-10 rounded-xl ps-9 pe-8 text-xs sm:text-sm font-bold outline-none transition-all placeholder:text-muted-foreground/60 shadow-sm"
+                      />
+                      {modalProductSearch && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalProductSearch('');
+                            setIsModalProductDropdownOpen(false);
+                          }}
+                          className="absolute end-2.5 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground rounded-full"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Autocomplete Dropdown */}
+                    {isModalProductDropdownOpen && modalProductSearch.trim().length > 0 && (
+                      <div className="absolute z-30 w-full mt-1 bg-card border border-border shadow-2xl rounded-xl max-h-56 overflow-y-auto divide-y divide-border/60">
+                        {modalFilteredProducts.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-muted-foreground font-semibold">
+                            لا توجد منتجات تطابق "{modalProductSearch}"
+                          </div>
+                        ) : (
+                          modalFilteredProducts.slice(0, 8).map(p => {
+                            const inCart = cart.find(c => c.id === p.id);
+                            const isOutOfStock = p.stock <= 0;
+                            return (
+                              <div
+                                key={p.id}
+                                onClick={() => {
+                                  if (isOutOfStock) {
+                                    showToast(`المنتج "${p.name}" غير متوفر في المخزون!`);
+                                    return;
+                                  }
+                                  addToCart(p);
+                                  setModalProductSearch('');
+                                  setIsModalProductDropdownOpen(false);
+                                }}
+                                className={cn(
+                                  "p-2.5 flex items-center justify-between hover:bg-secondary/70 transition-colors select-none",
+                                  isOutOfStock ? "opacity-60 cursor-not-allowed" : "cursor-pointer"
+                                )}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {p.image ? (
+                                    <img
+                                      src={(api.defaults.baseURL?.replace('/api', '') || '') + (p.image.startsWith('/') ? p.image : '/' + p.image)}
+                                      alt={p.name}
+                                      className="w-8 h-8 rounded-lg object-contain bg-background border border-border/50 shrink-0"
+                                    />
+                                  ) : (
+                                    <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                                      <Package className="w-4 h-4" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-bold text-foreground truncate">{p.name}</p>
+                                    <span className="text-[10px] text-muted-foreground">{p.category || 'عام'}</span>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                  <span className={cn(
+                                    "text-[10px] font-bold px-2 py-0.5 rounded-md",
+                                    isOutOfStock ? "bg-rose-500/15 text-rose-600" : p.stock <= 5 ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-secondary text-muted-foreground"
+                                  )}>
+                                    المخزون: {p.stock}
+                                  </span>
+                                  <span className="text-xs font-black text-emerald-600" dir="ltr">
+                                    ${Number(p.price).toFixed(2)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    disabled={isOutOfStock}
+                                    className="px-2.5 py-1 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center gap-1 shadow-sm disabled:opacity-50"
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                    {inCart ? `+1 (${inCart.quantity})` : 'إضافة'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {cart.map(item => {
+                    const product = products.find(p => p.id === item.id);
+                    const availableStock = product?.stock ?? item.stock ?? 0;
+                    return (
                     <div 
                       key={item.id} 
-                      className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-background rounded-xl border border-border/80 hover:border-primary/40 transition-colors shadow-sm"
+                      className="p-3.5 bg-background rounded-2xl border border-border/80 hover:border-primary/40 transition-all shadow-sm space-y-3"
                     >
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <input 
-                          type="checkbox" 
-                          className="w-4 h-4 accent-primary cursor-pointer shrink-0"
-                          checked={itemPaidStatus[item.id] ?? true}
-                          onChange={(e) => handleItemCheck(item.id, e.target.checked)}
-                          title="حالة المحاسبة"
-                        />
-                        <div className="min-w-0">
-                          <p className="font-bold text-sm text-foreground truncate" title={item.name}>
+                      {/* Top Header Row: Checkbox + Full Product Name + Stock + Restore Original + Delete Action */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <input 
+                            type="checkbox" 
+                            className="w-4 h-4 accent-primary cursor-pointer shrink-0 rounded"
+                            checked={itemPaidStatus[item.id] ?? true}
+                            onChange={(e) => handleItemCheck(item.id, e.target.checked)}
+                            title="تحديد الصنف للمحاسبة"
+                          />
+                          <span 
+                            className="font-bold text-sm text-foreground break-words leading-tight" 
+                            title={item.name}
+                          >
                             {item.name}
-                          </p>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="inline-flex items-center text-xs font-bold text-muted-foreground bg-secondary/60 px-2 py-0.5 rounded-md">
-                              الكمية: {item.quantity}
-                            </span>
-                            {item.originalPrice !== undefined && item.price !== item.originalPrice && (
-                              <button
-                                type="button"
-                                onClick={() => updateItemPrice(item.id, item.originalPrice!)}
-                                className="text-[11px] text-primary hover:underline font-semibold"
-                                title={`استعادة السعر الأصلي: ${item.originalPrice}$`}
-                              >
-                                (الأصلي: {item.originalPrice}$)
-                              </button>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span 
+                            className={cn(
+                              "text-[11px] font-bold px-2.5 py-0.5 rounded-lg border",
+                              availableStock <= 0 
+                                ? "bg-rose-500/10 text-rose-600 border-rose-500/20"
+                                : availableStock <= 5
+                                  ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20"
+                                  : "bg-secondary text-muted-foreground border-border/60"
                             )}
-                          </div>
+                            title={`الكمية المتوفرة في المخزون: ${availableStock} قطعة`}
+                          >
+                            المتوفر: {availableStock}
+                          </span>
+
+                          {item.originalPrice !== undefined && item.price !== item.originalPrice && (
+                            <button
+                              type="button"
+                              onClick={() => updateItemPrice(item.id, item.originalPrice!)}
+                              className="text-[11px] text-primary hover:underline font-semibold bg-primary/10 px-2 py-0.5 rounded-md"
+                              title={`استعادة السعر الأصلي: ${item.originalPrice}$`}
+                            >
+                              الأصلي: {item.originalPrice}$
+                            </button>
+                          )}
+
+                          {/* Delete Item Button */}
+                          <button
+                            type="button"
+                            onClick={() => removeFromCart(item.id)}
+                            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 transition-colors"
+                            title="حذف هذا الصنف من الفاتورة"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
 
-                      {/* Pricing Section */}
-                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        {item.quantity > 1 ? (
-                          <div className="flex items-center gap-2">
-                            {/* Unit Price */}
-                            <div className="flex items-center gap-1.5 bg-secondary/40 px-2.5 py-1.5 rounded-lg border border-border/70">
-                              <span className="text-xs font-bold text-muted-foreground">للقطعة:</span>
-                              <div className="relative inline-flex items-center">
+                      {/* Bottom Controls Row: Quantity Stepper (Right) & Pricing Controls (Left) */}
+                      <div className="pt-2.5 border-t border-border/60 flex flex-wrap items-center justify-between gap-3">
+                        {/* Quantity Stepper with Manual Input */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-muted-foreground select-none">الكمية:</span>
+                          <div className="inline-flex items-center gap-1 bg-secondary/50 rounded-xl p-1 border border-border">
+                            <button
+                              type="button"
+                              onClick={() => handleQuantityStep(item.id, -1)}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground font-black hover:text-foreground transition-colors"
+                              title="تقليل الكمية (عند الصفر يتم الحذف)"
+                            >
+                              <Minus className="w-3.5 h-3.5" />
+                            </button>
+
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={quantityInputs[item.id] !== undefined ? quantityInputs[item.id] : item.quantity}
+                              onChange={(e) => handleQuantityChange(item.id, e.target.value)}
+                              onBlur={() => handleQuantityBlur(item.id)}
+                              className="w-12 h-7 px-1 text-xs font-black bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded-lg outline-none text-foreground text-center"
+                              title="أدخل الكمية يدوياً باليد"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => handleQuantityStep(item.id, 1)}
+                              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-secondary text-muted-foreground font-black hover:text-foreground transition-colors"
+                              title="زيادة الكمية"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Pricing Controls */}
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          {item.quantity > 1 ? (
+                            <div className="flex items-center gap-2">
+                              {/* Unit Price */}
+                              <div className="flex items-center gap-1.5 bg-secondary/40 px-2.5 py-1 rounded-xl border border-border/70">
+                                <span className="text-[11px] font-bold text-muted-foreground">للقطعة:</span>
+                                <div className="inline-flex items-center" dir="ltr">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={item.price === 0 ? '' : item.price}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/[^0-9.]/g, '');
+                                      updateItemPrice(item.id, val === '' ? 0 : parseFloat(val));
+                                    }}
+                                    className="w-14 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded-lg px-1.5 py-0.5 text-xs font-black text-primary outline-none text-center"
+                                    title="تعديل سعر القطعة الواحدة"
+                                  />
+                                  <span className="text-[11px] font-bold text-muted-foreground ms-1">$</span>
+                                </div>
+                              </div>
+
+                              {/* Total Price for this item */}
+                              <div className="flex items-center gap-1.5 bg-secondary/40 px-2.5 py-1 rounded-xl border border-border/70">
+                                <span className="text-[11px] font-bold text-muted-foreground">الإجمالي:</span>
+                                <div className="inline-flex items-center" dir="ltr">
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={(item.price * item.quantity) === 0 ? '' : Number((item.price * item.quantity).toFixed(2))}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                      const val = e.target.value.replace(/[^0-9.]/g, '');
+                                      updateItemTotalPrice(item.id, val === '' ? 0 : parseFloat(val));
+                                    }}
+                                    className="w-16 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded-lg px-1.5 py-0.5 text-xs font-black text-foreground outline-none text-center"
+                                    title="تعديل إجمالي سعر البند"
+                                  />
+                                  <span className="text-[11px] font-bold text-muted-foreground ms-1">$</span>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Single item price */
+                            <div className="flex items-center gap-1.5 bg-secondary/40 px-3 py-1 rounded-xl border border-border/70">
+                              <span className="text-xs font-bold text-muted-foreground">السعر:</span>
+                              <div className="inline-flex items-center" dir="ltr">
                                 <input
                                   type="text"
                                   inputMode="decimal"
@@ -927,57 +1346,26 @@ const POSPage = () => {
                                     const val = e.target.value.replace(/[^0-9.]/g, '');
                                     updateItemPrice(item.id, val === '' ? 0 : parseFloat(val));
                                   }}
-                                  className="w-16 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 text-xs font-black text-primary outline-none text-center"
-                                  title="تعديل سعر القطعة الواحدة"
+                                  className="w-20 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded-lg px-2 py-0.5 text-xs font-black text-primary outline-none text-center"
+                                  title="تحديد سعر هذا المنتج"
                                 />
-                                <span className="text-[11px] font-bold text-muted-foreground me-1">$</span>
+                                <span className="text-xs font-bold text-muted-foreground ms-1">USD</span>
                               </div>
                             </div>
-
-                            {/* Total for this line */}
-                            <div className="flex items-center gap-1.5 bg-secondary/40 px-2.5 py-1.5 rounded-lg border border-border/70">
-                              <span className="text-xs font-bold text-muted-foreground">الإجمالي:</span>
-                              <div className="relative inline-flex items-center">
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={(item.price * item.quantity) === 0 ? '' : Number((item.price * item.quantity).toFixed(2))}
-                                  placeholder="0"
-                                  onChange={(e) => {
-                                    const val = e.target.value.replace(/[^0-9.]/g, '');
-                                    updateItemTotalPrice(item.id, val === '' ? 0 : parseFloat(val));
-                                  }}
-                                  className="w-20 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-1.5 py-0.5 text-xs font-black text-foreground outline-none text-center"
-                                  title="تعديل إجمالي سعر البند"
-                                />
-                                <span className="text-[11px] font-bold text-muted-foreground me-1">$</span>
-                              </div>
-                            </div>
-                          </div>
-                        ) : (
-                          /* Single item price */
-                          <div className="flex items-center gap-1.5 bg-secondary/40 px-3 py-1.5 rounded-lg border border-border/70">
-                            <span className="text-xs font-bold text-muted-foreground">السعر:</span>
-                            <div className="relative inline-flex items-center">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={item.price === 0 ? '' : item.price}
-                                placeholder="0"
-                                onChange={(e) => {
-                                  const val = e.target.value.replace(/[^0-9.]/g, '');
-                                  updateItemPrice(item.id, val === '' ? 0 : parseFloat(val));
-                                }}
-                                className="w-24 bg-background border border-border focus:border-primary focus:ring-1 focus:ring-primary rounded px-2 py-1 text-sm font-black text-primary outline-none text-center"
-                                title="تحديد سعر هذا المنتج"
-                              />
-                              <span className="text-xs font-bold text-muted-foreground me-1">USD</span>
-                            </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
+
+                      {/* Stock Warning Notice */}
+                      {stockWarnings[item.id] && (
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-3 py-1.5 rounded-xl border border-rose-500/20 animate-in fade-in slide-in-from-top-1">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>{stockWarnings[item.id]}</span>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 {/* Discounts */}

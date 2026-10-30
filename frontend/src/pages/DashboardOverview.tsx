@@ -21,7 +21,20 @@ import {
 } from 'recharts';
 import api from '../services/api';
 
+interface ChartPoint {
+  month?: number;
+  date: string;
+  short_date?: string;
+  sales_usd: number;
+  sales_syp: number;
+  orders_count?: number;
+  expenses_usd?: number;
+  expenses_syp?: number;
+}
+
 interface DashboardData {
+  period?: string;
+  year?: number;
   usd: {
     total_sales: number;
     total_costs: number;
@@ -36,7 +49,14 @@ interface DashboardData {
   };
   orders_count: number;
   recent_orders: Array<{ id: number; total_usd: number; total_syp: number; created_at: string }>;
-  daily_chart: Array<{ date: string; sales_usd: number; sales_syp: number; expenses_usd: number; expenses_syp: number }>;
+  monthly_chart: Array<ChartPoint>;
+  daily_chart: Array<ChartPoint>;
+  year_summary?: {
+    year: number;
+    total_sales_usd: number;
+    total_sales_syp: number;
+    orders_count: number;
+  };
 }
 
 const StatCard = ({ title, value, change, icon: Icon, trend }: any) => (
@@ -63,30 +83,39 @@ const StatCard = ({ title, value, change, icon: Icon, trend }: any) => (
 
 const DashboardOverview = () => {
   const [currency, setCurrency] = useState<'syp' | 'usd' | 'both'>('usd');
+  const [period, setPeriod] = useState<'month' | 'week' | 'year' | 'all'>('month');
+  const [chartMode, setChartMode] = useState<'monthly' | 'weekly'>('monthly');
 
   const { data, isLoading, refetch } = useQuery<DashboardData>({
-    queryKey: ['dashboard'],
+    queryKey: ['dashboard', period],
     queryFn: async () => {
-      const res = await api.get('/dashboard');
+      const res = await api.get(`/dashboard?period=${period}`);
       return res.data;
     },
     refetchInterval: 5000,
   });
 
   const formatMoney = React.useCallback((valSyp: number, valUsd: number) => {
-    if (currency === 'syp') return `SYP ${Number(valSyp).toLocaleString()}`;
+    if (currency === 'syp') return `${Number(valSyp).toLocaleString()} ل.س`;
     if (currency === 'usd') return `$${Number(valUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    return `SYP ${Number(valSyp).toLocaleString()} | $${Number(valUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `${Number(valSyp).toLocaleString()} ل.س | $${Number(valUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }, [currency]);
 
-  // Build chart data from API or show empty
+  // 100% accurate chart data (defaults to monthly as requested)
   const chartData = React.useMemo(() => {
+    if (chartMode === 'monthly') {
+      return data?.monthly_chart?.length
+        ? data.monthly_chart
+        : [
+            { date: 'لا توجد بيانات', sales_usd: 0, sales_syp: 0, expenses_usd: 0, expenses_syp: 0 }
+          ];
+    }
     return data?.daily_chart?.length
       ? data.daily_chart
       : [
           { date: 'اليوم', sales_usd: 0, sales_syp: 0, expenses_usd: 0, expenses_syp: 0 }
         ];
-  }, [data]);
+  }, [data, chartMode]);
 
   if (isLoading && !data) {
     return (
@@ -105,29 +134,59 @@ const DashboardOverview = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">نظرة عامة</h1>
-          <p className="text-muted-foreground">ملخص مبيعات ومصاريف الأسبوع الحالي</p>
+          <p className="text-muted-foreground">
+            {period === 'month' ? 'ملخص مبيعات الشهر الحالي وحركة العمليات' :
+             period === 'week' ? 'ملخص مبيعات الأسبوع الحالي' :
+             period === 'year' ? 'ملخص مبيعات العام الحالي بالكامل' :
+             'ملخص شامل لكافة العمليات والمبيعات'}
+          </p>
         </div>
 
-        {/* Currency Toggle */}
-        <div className="flex items-center gap-2 bg-secondary/30 p-1.5 rounded-full border border-border shadow-sm">
-          {[
-            { id: 'syp', label: 'ل.س' },
-            { id: 'usd', label: 'USD' },
-            { id: 'both', label: 'كلاهما' }
-          ].map(p => (
-            <button
-              key={p.id}
-              onClick={() => setCurrency(p.id as any)}
-              className={cn(
-                "px-4 py-1.5 rounded-full text-xs lg:text-sm font-bold transition-all duration-300",
-                currency === p.id
-                  ? 'bg-primary text-primary-foreground shadow-md'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Period Filter */}
+          <div className="flex items-center gap-1 bg-secondary/40 p-1 rounded-xl border border-border shadow-sm">
+            {[
+              { id: 'month', label: 'الشهر الحالي' },
+              { id: 'week', label: 'الأسبوع' },
+              { id: 'year', label: 'العام الحالي' },
+              { id: 'all', label: 'كامل العمليات' }
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPeriod(p.id as any)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                  period === p.id
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Currency Toggle */}
+          <div className="flex items-center gap-1.5 bg-secondary/40 p-1 rounded-xl border border-border shadow-sm">
+            {[
+              { id: 'syp', label: 'ل.س' },
+              { id: 'usd', label: 'USD' },
+              { id: 'both', label: 'كلاهما' }
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setCurrency(p.id as any)}
+                className={cn(
+                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                  currency === p.id
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
+                )}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -173,61 +232,135 @@ const DashboardOverview = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart */}
-        <div className="lg:col-span-2 vercel-card min-h-[400px] flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="font-bold">تحليلات المبيعات والمصاريف (الأسبوع)</h3>
-            <div className="flex gap-2">
-              <button onClick={() => refetch()} className="px-3 py-1 text-xs font-medium rounded-md bg-secondary text-foreground hover:bg-secondary/80 transition-colors">
+        {/* Chart - Monthly Sales Focused with 100% Accuracy */}
+        <div className="lg:col-span-2 vercel-card min-h-[440px] flex flex-col p-5 sm:p-6 shadow-sm border border-border">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 pb-3 border-b border-border/40">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-lg text-foreground flex items-center gap-2">
+                  <span>📈</span>
+                  <span>{chartMode === 'monthly' ? 'الخط البياني للمبيعات الشهرية' : 'الخط البياني للمبيعات الأسبوعية'}</span>
+                </h3>
+                <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                  دقة 100% لمبالغ البيع
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {chartMode === 'monthly' 
+                  ? 'إجمالي مبالغ المبيعات الفعلية لكل شهر من شهور السنة (المبلغ المباع)' 
+                  : 'مبالغ المبيعات اليومية خلال الأسبوع الحالي'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center bg-secondary/50 p-1 rounded-xl border border-border text-xs font-bold">
+                <button
+                  onClick={() => setChartMode('monthly')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg transition-all",
+                    chartMode === 'monthly'
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                  )}
+                >
+                  شهري (أشهر السنة)
+                </button>
+                <button
+                  onClick={() => setChartMode('weekly')}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg transition-all",
+                    chartMode === 'weekly'
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                  )}
+                >
+                  أسبوعي (أيام)
+                </button>
+              </div>
+
+              <button
+                onClick={() => refetch()}
+                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-secondary text-foreground hover:bg-secondary/80 transition-colors"
+                title="تحديث البيانات"
+              >
                 تحديث
               </button>
             </div>
           </div>
-          <div className="flex-1 w-full h-full min-h-[300px]">
+
+          <div className="flex-1 w-full h-full min-h-[320px]">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <AreaChart data={chartData} margin={{ top: 15, right: 20, left: 10, bottom: 20 }}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="colorExpenses" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.02} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.6} />
                 <XAxis
                   dataKey="date"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                  interval={0}
+                  height={32}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: 'hsl(var(--muted-foreground))' }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
-                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}K` : String(v)}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderColor: 'hsl(var(--border))', borderRadius: '12px' }}
-                  formatter={(_value: any, name: any, props: any) => {
-                    const isExpense = name === 'المصاريف';
-                    const dataPoint = props.payload;
-                    const valSyp = isExpense ? dataPoint.expenses_syp : dataPoint.sales_syp;
-                    const valUsd = isExpense ? dataPoint.expenses_usd : dataPoint.sales_usd;
-                    
-                    if (currency === 'syp') return [`SYP ${Number(valSyp).toLocaleString()}`, name];
-                    if (currency === 'usd') return [`$${Number(valUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, name];
-                    return [`SYP ${Number(valSyp).toLocaleString()} | $${Number(valUsd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, name];
+                  tick={{ fontSize: 11, fontWeight: 700, fill: 'hsl(var(--muted-foreground))' }}
+                  tickFormatter={(v) => {
+                    if (v === 0) return '0';
+                    if (v >= 1000000) return `${(v / 1000000).toFixed(1)}M`;
+                    if (v >= 1000) return `${(v / 1000).toFixed(0)}K`;
+                    return String(v);
                   }}
                 />
-                <Area type="monotone" dataKey={currency === 'syp' ? "sales_syp" : "sales_usd"} name="المبيعات"
-                  stroke="hsl(var(--primary))" strokeWidth={2}
-                  fillOpacity={1} fill="url(#colorSales)" />
-                <Area type="monotone" dataKey={currency === 'syp' ? "expenses_syp" : "expenses_usd"} name="المصاريف"
-                  stroke="#f43f5e" strokeWidth={2}
-                  fillOpacity={1} fill="url(#colorExpenses)" />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'hsl(var(--card))',
+                    borderColor: 'hsl(var(--border))',
+                    borderRadius: '16px',
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+                    padding: '12px 16px'
+                  }}
+                  formatter={(_value: any, _name: any, props: any) => {
+                    const dataPoint = props.payload;
+                    const valSyp = Number(dataPoint.sales_syp || 0);
+                    const valUsd = Number(dataPoint.sales_usd || 0);
+                    const ordersCount = dataPoint.orders_count || 0;
+                    
+                    let label = '';
+                    if (currency === 'syp') label = `SYP ${valSyp.toLocaleString()}`;
+                    else if (currency === 'usd') label = `$${valUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    else label = `$${valUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} | SYP ${valSyp.toLocaleString()}`;
+
+                    return [
+                      <div key="sales-tooltip" className="space-y-1">
+                        <span className="text-base font-black text-primary block" dir="ltr">{label}</span>
+                        {ordersCount > 0 && (
+                          <span className="text-xs text-muted-foreground font-bold block">
+                            عدد الطلبات: {ordersCount} طلب
+                          </span>
+                        )}
+                      </div>,
+                      'إجمالي المبيعات'
+                    ];
+                  }}
+                  labelFormatter={(_label, payload) => payload?.[0]?.payload?.full_date ? `📅 ${payload[0].payload.full_date}` : `📅 ${_label}`}
+                />
+                <Area
+                  type="monotone"
+                  dataKey={currency === 'syp' ? "sales_syp" : "sales_usd"}
+                  name="إجمالي المبيعات"
+                  stroke="hsl(var(--primary))"
+                  strokeWidth={3}
+                  dot={{ r: 4, stroke: 'hsl(var(--primary))', strokeWidth: 2, fill: 'hsl(var(--card))' }}
+                  activeDot={{ r: 7, stroke: 'hsl(var(--primary))', strokeWidth: 3, fill: 'hsl(var(--primary))' }}
+                  fillOpacity={1}
+                  fill="url(#colorSales)"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>

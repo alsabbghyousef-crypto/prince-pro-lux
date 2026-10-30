@@ -27,13 +27,18 @@ class Order extends Model
         'discount_amount',
         'payment_method',
         'paid_amount',
-        'debt_amount', 'debt_currency',
+        'paid_usd',
+        'paid_syp',
+        'debt_amount',
+        'debt_currency',
         'notes',
     ];
 
     protected $casts = [
         'total' => 'decimal:2',
         'total_syp' => 'decimal:2',
+        'paid_usd' => 'decimal:2',
+        'paid_syp' => 'decimal:2',
         'exchange_rate' => 'decimal:2',
         'is_settled' => 'boolean',
         'is_locked' => 'boolean',

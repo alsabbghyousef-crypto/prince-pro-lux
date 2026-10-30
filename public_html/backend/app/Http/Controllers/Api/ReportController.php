@@ -43,19 +43,30 @@ class ReportController extends Controller
         // Get all products
         $products = \App\Models\Product::with('category')->get();
 
-        // Get order items in period
-        $orderItems = \App\Models\OrderItem::whereHas('order', function ($query) use ($startDate, $endDate) {
-            $query->whereBetween('created_at', [$startDate, $endDate]);
-        })->get();
+        // Get order items in period with product and order
+        $orderItems = \App\Models\OrderItem::with(['product', 'order'])
+            ->whereHas('order', function ($query) use ($startDate, $endDate) {
+                $query->whereBetween('created_at', [$startDate, $endDate]);
+            })->get();
+
+        $globalExchangeRate = (float)(\App\Models\Setting::where('key', 'exchange_rate')->first()->value ?? 13950);
+        if ($globalExchangeRate <= 1) $globalExchangeRate = 13950;
 
         // Get restocks in period
         $restocks = \App\Models\ProductRestock::whereBetween('created_at', [$startDate, $endDate])->get();
 
         // Group by product id and calculate detailed metrics
-        $salesByProduct = $orderItems->groupBy('product_id')->map(function ($items) {
+        $salesByProduct = $orderItems->groupBy('product_id')->map(function ($items) use ($globalExchangeRate) {
             $sold_quantity = $items->sum('quantity');
-            $total_revenue = $items->sum(function($item) { return $item->price * $item->quantity; });
-            $total_cost = $items->sum(function($item) { return $item->cost_at_sale_syp * $item->quantity; });
+            $total_revenue = $items->sum(function($item) { return (float)$item->price * (float)$item->quantity; });
+            $total_cost = $items->sum(function($item) use ($globalExchangeRate) {
+                if ($item->cost_at_sale_syp > 0) {
+                    $rate = ($item->order && $item->order->exchange_rate > 1) ? (float)$item->order->exchange_rate : $globalExchangeRate;
+                    return ((float)$item->cost_at_sale_syp / $rate) * (float)$item->quantity;
+                }
+                $costUsd = $item->product ? (float)($item->product->cost_price ?: ($item->product->price * 0.8)) : 0;
+                return $costUsd * (float)$item->quantity;
+            });
             return [
                 'sold_quantity' => $sold_quantity,
                 'total_revenue' => $total_revenue,
@@ -143,35 +154,66 @@ class ReportController extends Controller
 
         $periodStr = $startDate->format('Y/n/j') . ' - ' . $endDate->format('Y/n/j');
 
-        $globalExchangeRate = (float)(\App\Models\Setting::where('key', 'exchange_rate')->first()->value ?? 15000);
-        if ($globalExchangeRate <= 0) $globalExchangeRate = 15000;
+        $globalExchangeRate = (float)(\App\Models\Setting::where('key', 'exchange_rate')->first()->value ?? 13950);
+        if ($globalExchangeRate <= 1) {
+            $globalExchangeRate = (float)(\App\Models\Setting::where('key', 'current_exchange_rate')->first()->value ?? 13950);
+        }
+        if ($globalExchangeRate <= 1) $globalExchangeRate = 13950;
 
         // 1. Get Orders (Sales)
-        $orders = \App\Models\Order::with(['customer', 'items'])
+        $orders = \App\Models\Order::with(['customer', 'items.product'])
             ->whereBetween('created_at', [$startDate, $endDate])
             ->get()
-            ->map(function($order) {
+            ->map(function($order) use ($globalExchangeRate) {
                 $exRate = (float)$order->exchange_rate;
-                if ($exRate <= 0) $exRate = 15000;
+                if ($exRate <= 1) $exRate = $globalExchangeRate;
 
-                $revenue_syp = (float)$order->total_syp;
-                $revenue_usd = (float)$order->total;
+                if ($order->currency === 'USD') {
+                    $revenue_usd = (float)$order->total;
+                    $revenue_syp = ((float)$order->total_syp > $revenue_usd) ? (float)$order->total_syp : ($revenue_usd * $exRate);
+                } else {
+                    $revenue_syp = (float)($order->total_syp > 0 ? $order->total_syp : $order->total);
+                    $revenue_usd = $revenue_syp / $exRate;
+                }
 
-                $cash_syp = (float)$order->paid_syp + ((float)$order->paid_usd * $exRate);
-                $cash_usd = $cash_syp / $exRate;
-                
-                $debtCurrency = $order->debt_currency ?? 'SYP';
-                $debtAmount = (float)$order->debt_amount;
-                $debt_syp = $debtCurrency === 'USD' ? $debtAmount * $exRate : $debtAmount;
-                $debt_usd = $debt_syp / $exRate;
-                
-                $cost_syp = 0;
-                if ($order->items) {
-                    foreach($order->items as $item) {
-                        $cost_syp += (float)$item->cost_at_sale_syp * ((float)$item->quantity - (float)$item->returned_quantity);
+                $isCash = ($order->payment_method === 'CASH' || !$order->payment_method);
+                $paidUsd = (float)$order->paid_usd;
+                $paidSyp = (float)$order->paid_syp;
+
+                if ($isCash && $paidUsd == 0 && $paidSyp == 0) {
+                    if ($order->currency === 'USD') {
+                        $paidUsd = max(0, $revenue_usd - (float)$order->debt_amount);
+                        $paidSyp = $paidUsd * $exRate;
+                    } else {
+                        $paidSyp = max(0, $revenue_syp - (float)$order->debt_amount);
+                        $paidUsd = $paidSyp / $exRate;
                     }
                 }
-                $cost_usd = $cost_syp / $exRate;
+
+                $cash_syp = $paidSyp + ($paidUsd * $exRate);
+                $cash_usd = $cash_syp / $exRate;
+                
+                $debtCurrency = $order->debt_currency ?? 'USD';
+                $debtAmount = (float)$order->debt_amount;
+                $debt_usd = $debtCurrency === 'USD' ? $debtAmount : ($debtAmount / $exRate);
+                $debt_syp = $debtCurrency === 'USD' ? ($debtAmount * $exRate) : $debtAmount;
+                
+                $cost_syp = 0;
+                $cost_usd = 0;
+                if ($order->items) {
+                    foreach($order->items as $item) {
+                        $qty = ((float)$item->quantity - (float)$item->returned_quantity);
+                        $itemCostSyp = (float)$item->cost_at_sale_syp;
+                        if ($itemCostSyp <= 0 && $item->product) {
+                            $itemCostUsd = (float)($item->product->cost_price ?: ($item->product->price * 0.8));
+                            $itemCostSyp = $itemCostUsd * $exRate;
+                        } else {
+                            $itemCostUsd = $itemCostSyp / $exRate;
+                        }
+                        $cost_syp += $itemCostSyp * $qty;
+                        $cost_usd += $itemCostUsd * $qty;
+                    }
+                }
 
                 $profit_syp = $revenue_syp - $cost_syp;
                 $profit_usd = $revenue_usd - $cost_usd;
@@ -180,6 +222,7 @@ class ReportController extends Controller
 
                 return [
                     'id' => 'order-' . $order->id,
+                    'order_id' => $order->id,
                     'type' => $type,
                     'category' => 'مبيعات',
                     'revenue_syp' => $revenue_syp,
@@ -197,6 +240,9 @@ class ReportController extends Controller
                     'date' => clone $order->created_at,
                     'date_string' => $order->created_at->format('Y-m-d g:i A'),
                     'details' => 'طلب #' . $order->id . ($order->customer ? ' - ' . $order->customer->name : ''),
+                    'customer_name' => $order->customer ? $order->customer->name : $order->customer_name,
+                    'customer_phone' => $order->customer ? $order->customer->phone : null,
+                    'payment_method' => $order->payment_method ?? 'CASH',
                 ];
             });
 
@@ -269,16 +315,25 @@ class ReportController extends Controller
         $totalRevenue_syp = $stream->sum('revenue_syp');
         $totalExpense_syp = $stream->sum('expense_syp');
         $totalCost_syp = $stream->sum('cost_syp');
-        $totalProfit_syp = $stream->sum('profit_syp');
+        $totalProfit_syp = $totalRevenue_syp - $totalCost_syp - $totalExpense_syp;
         $totalCashIn_syp = $stream->where('cash_syp', '>', 0)->sum('cash_syp');
         $totalCashOut_syp = $stream->where('cash_syp', '<', 0)->sum(function($i){return abs($i['cash_syp']);});
         
         $totalRevenue_usd = $stream->sum('revenue_usd');
         $totalExpense_usd = $stream->sum('expense_usd');
         $totalCost_usd = $stream->sum('cost_usd');
-        $totalProfit_usd = $stream->sum('profit_usd');
+        $totalProfit_usd = $totalRevenue_usd - $totalCost_usd - $totalExpense_usd;
         $totalCashIn_usd = $stream->where('cash_usd', '>', 0)->sum('cash_usd');
         $totalCashOut_usd = $stream->where('cash_usd', '<', 0)->sum(function($i){return abs($i['cash_usd']);});
+
+        // Calculate overall customer debts in DB
+        $sumCustDebtSyp = (float)\App\Models\Customer::sum('total_debt');
+        $sumCustDebtUsd = (float)\App\Models\Customer::sum('total_debt_usd');
+        $allCustomersDebtSyp = $sumCustDebtSyp + ($sumCustDebtUsd * $globalExchangeRate);
+        $allCustomersDebtUsd = $sumCustDebtUsd + ($sumCustDebtSyp / $globalExchangeRate);
+
+        $periodDebtSyp = (float)$stream->sum('debt_syp');
+        $periodDebtUsd = (float)$stream->sum('debt_usd');
 
         return response()->json([
             'metrics' => [
@@ -289,6 +344,8 @@ class ReportController extends Controller
                     'net_profit' => $totalProfit_syp,
                     'total_cash_in' => $totalCashIn_syp,
                     'total_cash_out' => $totalCashOut_syp,
+                    'total_customer_debt' => $allCustomersDebtSyp,
+                    'period_debt' => $periodDebtSyp,
                 ],
                 'usd' => [
                     'total_revenue' => $totalRevenue_usd,
@@ -297,6 +354,8 @@ class ReportController extends Controller
                     'net_profit' => $totalProfit_usd,
                     'total_cash_in' => $totalCashIn_usd,
                     'total_cash_out' => $totalCashOut_usd,
+                    'total_customer_debt' => $allCustomersDebtUsd,
+                    'period_debt' => $periodDebtUsd,
                 ]
             ],
             'records' => $stream

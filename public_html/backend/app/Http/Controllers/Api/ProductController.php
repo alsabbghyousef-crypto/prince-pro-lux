@@ -26,6 +26,8 @@ class ProductController extends Controller
                 'category_id' => $product->category_id,
                 'image' => $product->image,
                 'stock' => (float) $product->stock,
+                'min_threshold' => (float) ($product->min_threshold ?? 5),
+                'reorder_level' => (float) ($product->min_threshold ?? 5),
                 'trackStock' => (bool) $product->track_stock,
                 'is_estimated' => (bool) $product->is_estimated,
                 'cogs_percentage' => (float) $product->cogs_percentage,
@@ -51,6 +53,8 @@ class ProductController extends Controller
             
             'trackStock' => 'nullable|boolean',
             'stock' => 'nullable|numeric|min:0',
+            'min_threshold' => 'nullable|numeric|min:0',
+            'reorder_level' => 'nullable|numeric|min:0',
             'is_estimated' => 'nullable|boolean',
             'cogs_percentage' => 'nullable|numeric|min:0|max:100',
         ]);
@@ -79,6 +83,7 @@ class ProductController extends Controller
             'image' => $imagePath,
             'track_stock' => true,
             'stock' => $request->stock ?? 0,
+            'min_threshold' => $request->min_threshold ?? $request->reorder_level ?? 5,
             'is_estimated' => $request->is_estimated ?? false,
             'cogs_percentage' => $request->cogs_percentage ?? 45,
         ]);
@@ -108,6 +113,8 @@ class ProductController extends Controller
             
             'trackStock' => 'nullable|boolean',
             'stock' => 'nullable|numeric|min:0',
+            'min_threshold' => 'nullable|numeric|min:0',
+            'reorder_level' => 'nullable|numeric|min:0',
             'is_estimated' => 'nullable|boolean',
             'cogs_percentage' => 'nullable|numeric|min:0|max:100',
         ]);
@@ -136,6 +143,7 @@ class ProductController extends Controller
             'image' => $imagePath,
             'track_stock' => true,
             'stock' => $request->has('stock') ? $request->stock : $product->stock,
+            'min_threshold' => $request->has('min_threshold') ? $request->min_threshold : ($request->has('reorder_level') ? $request->reorder_level : $product->min_threshold),
             'is_estimated' => $request->has('is_estimated') ? $request->is_estimated : $product->is_estimated,
             'cogs_percentage' => $request->has('cogs_percentage') ? $request->cogs_percentage : $product->cogs_percentage,
         ]);

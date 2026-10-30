@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\PayrollController;
 use App\Http\Controllers\Api\DataSheetController;
+use App\Http\Controllers\Api\ContainerController;
 use App\Http\Controllers\Api\DataSheetCategoryController;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,6 +30,8 @@ use App\Http\Controllers\Api\DataSheetCategoryController;
 Route::post('/login', [AuthController::class, 'login']);
 Route::get('/datasheets/{id}/preview', [DataSheetController::class, 'preview']);
 Route::get('/datasheets/{id}/download', [DataSheetController::class, 'download']);
+Route::get('/container-files/{id}/preview',  [ContainerController::class, 'previewFile']);
+Route::get('/container-files/{id}/download', [ContainerController::class, 'downloadFile']);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Protected (Sanctum auth required for all routes below)
@@ -52,6 +55,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // ── DataSheets / File Sharing ──────────────────────────────────────────────
     Route::apiResource('datasheets', DataSheetController::class);
+
+    // ── Containers & Shipment Files ──────────────────────────────────────────
+    Route::apiResource('containers', ContainerController::class);
+    Route::post('/containers/{id}/files', [ContainerController::class, 'addFile']);
+    Route::post('/containers/quick-upload', [ContainerController::class, 'quickUpload']);
+    Route::delete('/container-files/{id}', [ContainerController::class, 'deleteFile']);
     Route::apiResource('datasheet-categories', DataSheetCategoryController::class);
 
     // ── Inventory ──────────────────────────────────────────────────────────────
@@ -87,6 +96,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/settings/exchange-rate',     [SettingsController::class, 'updateExchangeRate']);
     Route::get('/settings/exchange-rate/history', [SettingsController::class, 'getExchangeRateHistory']);
     Route::get('/settings/treasury',          [SettingsController::class, 'getTreasury']);
+    Route::get('/settings/roles-permissions', [SettingsController::class, 'getRolesPermissions']);
+    Route::put('/settings/roles-permissions', [SettingsController::class, 'updateRolesPermissions']);
 
     // ─────────────────────────────────────────────────────────────────────────
     // 🔒 ACCOUNTANT + ADMIN only routes
@@ -128,5 +139,6 @@ Route::middleware('auth:sanctum')->group(function () {
         // Accounting lock
                     });
 });
-Route::post('/orders/{order}/return', [OrderController::class, 'returnItems']);
+
+Route::post('/orders/{order}/return', [OrderController::class, 'returnItems']);
     
