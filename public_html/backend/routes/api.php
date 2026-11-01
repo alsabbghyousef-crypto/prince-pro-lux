@@ -25,120 +25,112 @@ use App\Http\Controllers\Api\ContainerController;
 use App\Http\Controllers\Api\DataSheetCategoryController;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Public (no auth)
+// Public routes (Rate-limited to prevent brute-force attacks - OWASP A04/A07)
 // ─────────────────────────────────────────────────────────────────────────────
-Route::post('/login', [AuthController::class, 'login']);
-Route::get('/datasheets/{id}/preview', [DataSheetController::class, 'preview']);
-Route::get('/datasheets/{id}/download', [DataSheetController::class, 'download']);
-Route::get('/container-files/{id}/preview',  [ContainerController::class, 'previewFile']);
-Route::get('/container-files/{id}/download', [ContainerController::class, 'downloadFile']);
+Route::name('login')->get('/login', fn() => response()->json(['message' => 'Unauthenticated.'], 401));
+
+Route::middleware('throttle:5,1')->group(function () {
+    Route::post('/login', [AuthController::class, 'login']);
+});
+
+// Public preview & download with strict path traversal checks
+Route::middleware('throttle:60,1')->group(function () {
+    Route::get('/datasheets/{id}/preview',       [DataSheetController::class, 'preview']);
+    Route::get('/datasheets/{id}/download',      [DataSheetController::class, 'download']);
+    Route::get('/container-files/{id}/preview',  [ContainerController::class, 'previewFile']);
+    Route::get('/container-files/{id}/download', [ContainerController::class, 'downloadFile']);
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Protected (Sanctum auth required for all routes below)
+// Protected routes (Sanctum auth + Global Rate Limiting - OWASP A01/A04)
 // ─────────────────────────────────────────────────────────────────────────────
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'throttle:180,1'])->group(function () {
 
-    // ── Auth ───────────────────────────────────────────────────────────────────
-    Route::post('/logout',  [AuthController::class, 'logout']);
-    Route::get('/user',     [AuthController::class, 'user']);
-    Route::put('/user',     [AuthController::class, 'updateProfile']);
-        
-    // ── Dashboard ──────────────────────────────────────────────────────────────
+    // ── Auth & Profile ────────────────────────────────────────────────────────
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user',    [AuthController::class, 'user']);
+    Route::put('/user',    [AuthController::class, 'updateProfile']);
+
+    // ── Dashboard ─────────────────────────────────────────────────────────────
     Route::get('/dashboard', [DashboardController::class, 'index']);
 
-    // ── Categories & Products (all authenticated users) ────────────────────────
+    // ── Categories & Products ─────────────────────────────────────────────────
     Route::apiResource('categories', CategoryController::class);
     Route::get('products/{product}/profile', [ProductController::class, 'profile']);
     Route::post('products/bulk', [ProductController::class, 'bulkStore']);
     Route::post('products/bulk-delete', [ProductController::class, 'bulkDelete']);
-    Route::apiResource('products',   ProductController::class);
+    Route::apiResource('products', ProductController::class);
 
-    // ── DataSheets / File Sharing ──────────────────────────────────────────────
+    // ── DataSheets & Categories ───────────────────────────────────────────────
     Route::apiResource('datasheets', DataSheetController::class);
+    Route::apiResource('datasheet-categories', DataSheetCategoryController::class);
 
-    // ── Containers & Shipment Files ──────────────────────────────────────────
+    // ── Containers & Shipment Files ───────────────────────────────────────────
     Route::apiResource('containers', ContainerController::class);
     Route::post('/containers/{id}/files', [ContainerController::class, 'addFile']);
     Route::post('/containers/quick-upload', [ContainerController::class, 'quickUpload']);
     Route::delete('/container-files/{id}', [ContainerController::class, 'deleteFile']);
-    Route::apiResource('datasheet-categories', DataSheetCategoryController::class);
 
-    // ── Inventory ──────────────────────────────────────────────────────────────
+    // ── Inventory ─────────────────────────────────────────────────────────────
     Route::apiResource('inventory', InventoryController::class)
          ->parameters(['inventory' => 'inventoryItem']);
-    Route::patch('/inventory/{inventoryItem}/quantity',  [InventoryController::class, 'updateQuantity']);
-    Route::post('/inventory/recalculate-averages',       [InventoryController::class, 'recalculateAverages']);
+    Route::patch('/inventory/{inventoryItem}/quantity', [InventoryController::class, 'updateQuantity']);
 
-    // ── Orders ─────────────────────────────────────────────────────────────────
+    // ── Orders & Sales ────────────────────────────────────────────────────────
     Route::apiResource('orders', OrderController::class);
     Route::post('/orders/{order}/return', [OrderController::class, 'returnItems']);
-    // Customers
+
+    // ── Customers & Receivables ───────────────────────────────────────────────
     Route::get('/customers', [CustomerController::class, 'index']);
     Route::post('/customers', [CustomerController::class, 'store']);
     Route::put('/customers/{id}', [CustomerController::class, 'update']);
     Route::get('/customers/{id}', [CustomerController::class, 'show']);
     Route::post('/customers/{id}/pay', [CustomerController::class, 'payDebt']);
 
-
-            
-                
-    
-
-    // ── Delivery Companies ─────────────────────────────────────────────────────
+    // ── Delivery Companies ────────────────────────────────────────────────────
     Route::apiResource('delivery-companies', DeliveryCompanyController::class)
          ->parameters(['delivery-companies' => 'deliveryCompany']);
     Route::patch('/delivery-companies/{deliveryCompany}/toggle', [DeliveryCompanyController::class, 'toggleStatus']);
 
-    // ── Settings ───────────────────────────────────────────────────────────────
-    Route::get('/settings',                   [SettingsController::class, 'index']);
-    Route::put('/settings',                   [SettingsController::class, 'update']);
-    Route::get('/settings/exchange-rate',     [SettingsController::class, 'getExchangeRate']);
-    Route::put('/settings/exchange-rate',     [SettingsController::class, 'updateExchangeRate']);
+    // ── General Settings (Read-Only for staff) ────────────────────────────────
+    Route::get('/settings',                       [SettingsController::class, 'index']);
+    Route::get('/settings/exchange-rate',         [SettingsController::class, 'getExchangeRate']);
     Route::get('/settings/exchange-rate/history', [SettingsController::class, 'getExchangeRateHistory']);
-    Route::get('/settings/treasury',          [SettingsController::class, 'getTreasury']);
-    Route::get('/settings/roles-permissions', [SettingsController::class, 'getRolesPermissions']);
-    Route::put('/settings/roles-permissions', [SettingsController::class, 'updateRolesPermissions']);
+    Route::get('/settings/treasury',              [SettingsController::class, 'getTreasury']);
+    Route::get('/settings/roles-permissions',     [SettingsController::class, 'getRolesPermissions']);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🔒 ACCOUNTANT + ADMIN only routes
-    // ─────────────────────────────────────────────────────────────────────────
-    
-    // ─────────────────────────────────────────────────────────────────────────
-    // 🔐 ADMIN only routes
-    // ─────────────────────────────────────────────────────────────────────────
-    
-    
-    // --- ERP System Routes ---
+    // ── ERP Transactions & Reports ────────────────────────────────────────────
     Route::apiResource('transactions', TransactionController::class);
-    
+    Route::get('/reports', [ReportController::class, 'index']);
+    Route::get('/revenue-stream', [ReportController::class, 'revenueStream']);
+    Route::get('/inventory-report', [ReportController::class, 'inventoryReport']);
+
+    // ── HR & Employees ────────────────────────────────────────────────────────
+    Route::get('/attendances', [EmployeeController::class, 'getAttendances']);
+    Route::post('/attendances', [EmployeeController::class, 'recordAttendance']);
+    Route::get('/hr/alerts', [EmployeeController::class, 'getAlerts']);
+
     Route::get('/payroll/{userId}', [PayrollController::class, 'getEmployeeData']);
     Route::post('/payroll/leaves', [PayrollController::class, 'storeLeave']);
     Route::delete('/payroll/leaves/{id}', [PayrollController::class, 'deleteLeave']);
     Route::post('/payroll/payments', [PayrollController::class, 'storePayment']);
     Route::delete('/payroll/payments/{id}', [PayrollController::class, 'deletePayment']);
-    
-    Route::get('/reports', [ReportController::class, 'index']);
-    Route::get('/revenue-stream', [ReportController::class, 'revenueStream']);
-    Route::get('/inventory-report', [ReportController::class, 'inventoryReport']);
 
-    // --- HR & Employees ---
-    
-    Route::get('/attendances', [EmployeeController::class, 'getAttendances']);
-    Route::post('/attendances', [EmployeeController::class, 'recordAttendance']);
-    Route::get('/hr/alerts', [EmployeeController::class, 'getAlerts']);
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🔐 ADMIN ONLY ROUTES (OWASP A01: Broken Access Control Enforcement)
+    // ─────────────────────────────────────────────────────────────────────────
+    Route::middleware('admin')->group(function () {
+        // Critical Settings Changes
+        Route::put('/settings',                   [SettingsController::class, 'update']);
+        Route::put('/settings/exchange-rate',     [SettingsController::class, 'updateExchangeRate']);
+        Route::put('/settings/roles-permissions', [SettingsController::class, 'updateRolesPermissions']);
+        Route::post('/inventory/recalculate-averages', [InventoryController::class, 'recalculateAverages']);
 
-    Route::middleware('admin')
-->group(function () {
-        // User management
-        Route::get('/users',                    [AuthController::class, 'index']);
-        Route::post('/users',                   [AuthController::class, 'store']);
-        Route::put('/users/{user}',             [AuthController::class, 'update']);
-        Route::delete('/users/{user}',          [AuthController::class, 'destroy']);
-        Route::put('/users/{user}/password',    [AuthController::class, 'updatePassword']);
-                
-        // Accounting lock
-                    });
+        // User & Staff Management
+        Route::get('/users',                 [AuthController::class, 'index']);
+        Route::post('/users',                [AuthController::class, 'store']);
+        Route::put('/users/{user}',          [AuthController::class, 'update']);
+        Route::delete('/users/{user}',       [AuthController::class, 'destroy']);
+        Route::put('/users/{user}/password', [AuthController::class, 'updatePassword']);
+    });
 });
-
-Route::post('/orders/{order}/return', [OrderController::class, 'returnItems']);
-    

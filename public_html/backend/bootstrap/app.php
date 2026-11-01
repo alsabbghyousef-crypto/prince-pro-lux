@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Global OWASP Security Middlewares
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
+        $middleware->append(\App\Http\Middleware\SanitizeInput::class);
+
         $middleware->alias([
             'cors'        => \Illuminate\Http\Middleware\HandleCors::class,
             'admin'       => \App\Http\Middleware\EnsureUserIsAdmin::class,

@@ -1,0 +1,19 @@
+# OWASP A08: Disable execution of any server-side script in uploads folder
+<FilesMatch "(?i)\.(php|phtml|phar|php[0-9]|pl|py|jsp|asp|htm|html|shtml|sh|cgi|bash)$">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
+<IfModule mod_php.c>
+    php_flag engine off
+</IfModule>
+
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+
+<IfModule mod_php8.c>
+    php_flag engine off
+</IfModule>
+
+Options -ExecCGI -Indexes

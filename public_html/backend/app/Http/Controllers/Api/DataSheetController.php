@@ -128,16 +128,32 @@ class DataSheetController extends Controller
         $uploadedFile = $request->file('file');
         $originalName = $uploadedFile->getClientOriginalName();
         $extension = strtolower($uploadedFile->getClientOriginalExtension());
+
+        // OWASP A08: Strict extension security check
+        $allowedExtensions = [
+            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'ods', 'ppt', 'pptx',
+            'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp',
+            'zip', 'rar', '7z', 'tar', 'gz', 'txt', 'json', 'xml', 'md'
+        ];
+        $dangerousExtensions = [
+            'php', 'phtml', 'phar', 'php3', 'php4', 'php5', 'php7', 'php8', 'phps',
+            'inc', 'sh', 'bash', 'exe', 'bat', 'cmd', 'com', 'js', 'vbs', 'scr', 'py', 'pl', 'cgi', 'htaccess', 'env'
+        ];
+
+        if (in_array($extension, $dangerousExtensions) || !in_array($extension, $allowedExtensions)) {
+            abort(422, 'نوع الملف المرفوع غير مسموح به لأسباب أمنية.');
+        }
+
         $fileSize = $uploadedFile->getSize();
         $fileType = $this->detectFileType($extension);
 
         $destinationPath = public_path('uploads/datasheets');
         try {
             if (!File::isDirectory($destinationPath)) {
-                File::makeDirectory($destinationPath, 0777, true, true);
+                File::makeDirectory($destinationPath, 0755, true, true);
             }
 
-            $safeFileName = time() . '_' . uniqid() . '.' . $extension;
+            $safeFileName = time() . '_' . bin2hex(random_bytes(8)) . '.' . $extension;
             $uploadedFile->move($destinationPath, $safeFileName);
             $filePath = '/uploads/datasheets/' . $safeFileName;
         } catch (\Throwable $e) {
@@ -259,13 +275,19 @@ class DataSheetController extends Controller
         $datasheet = DataSheet::findOrFail($id);
         $fullPath = public_path($datasheet->file_path);
 
-        if (!File::exists($fullPath)) {
+        $safeBase = realpath(public_path('uploads'));
+        $real = realpath($fullPath);
+        if (!$real || !$safeBase || !str_starts_with($real, $safeBase)) {
+            return response()->json(['message' => 'مسار الملف غير مصرح به أو تم التلاعب به.'], 403);
+        }
+
+        if (!File::exists($real)) {
             return response()->json(['message' => 'الملف غير موجود على الخادم.'], 404);
         }
 
         $datasheet->increment('downloads_count');
 
-        return response()->download($fullPath, $datasheet->original_name);
+        return response()->download($real, $datasheet->original_name);
     }
 
     public function preview($id)
@@ -273,7 +295,13 @@ class DataSheetController extends Controller
         $datasheet = DataSheet::findOrFail($id);
         $fullPath = public_path($datasheet->file_path);
 
-        if (!File::exists($fullPath)) {
+        $safeBase = realpath(public_path('uploads'));
+        $real = realpath($fullPath);
+        if (!$real || !$safeBase || !str_starts_with($real, $safeBase)) {
+            return response()->json(['message' => 'مسار الملف غير مصرح به أو تم التلاعب به.'], 403);
+        }
+
+        if (!File::exists($real)) {
             return response()->json(['message' => 'الملف غير موجود على الخادم.'], 404);
         }
 
@@ -292,14 +320,14 @@ class DataSheetController extends Controller
             'xls' => 'application/vnd.ms-excel',
             'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'doc' => 'application/msword',
-            default => File::mimeType($fullPath) ?: 'application/octet-stream',
+            default => File::mimeType($real) ?: 'application/octet-stream',
         };
 
-        return response()->file($fullPath, [
+        return response()->file($real, [
             'Content-Type' => $mimeType,
             'Content-Disposition' => 'inline; filename="' . rawurlencode($datasheet->original_name) . '"',
             'Access-Control-Allow-Origin' => '*',
-            'X-Frame-Options' => 'ALLOWALL',
+            'X-Frame-Options' => 'SAMEORIGIN',
         ]);
     }
 }

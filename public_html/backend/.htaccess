@@ -1,5 +1,11 @@
-Options +SymLinksIfOwnerMatch
+Options +SymLinksIfOwnerMatch -Indexes
 RewriteEngine On
+
+# Block sensitive files and directories
+RewriteRule (^|/)\.(?!well-known) - [F,L]
+RewriteRule \.(env|sql|log|bak|lock|json)$ - [F,L]
+RewriteRule ^(app|bootstrap|config|database|resources|routes|storage|tests|vendor)/ - [F,L]
+RewriteRule ^artisan$ - [F,L]
 
 # Allow Installatron requests
 RewriteCond %{REQUEST_FILENAME} deleteme\.\w+\.php

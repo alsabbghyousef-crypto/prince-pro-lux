@@ -1,14 +1,47 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# OWASP Top 10 Security Hardened .htaccess
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Disable directory browsing
+Options -Indexes -MultiViews
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
 
-    # تجاهل طلبات Backend
+    # 1. Block access to hidden files and directories (.env, .git, .htaccess, etc.)
+    RewriteRule (^|/)\.(?!well-known) - [F,L]
+
+    # 2. Block sensitive file extensions (database dumps, logs, backups, configs)
+    RewriteRule \.(sql|log|bak|swp|dist|env|conf|yaml|yml|json\.lock|lock)$ - [F,L]
+
+    # 3. Block access to backend internal source code and storage
+    RewriteRule ^backend/(app|bootstrap|config|database|resources|routes|storage|tests|vendor)/ - [F,L]
+    RewriteRule ^backend/artisan$ - [F,L]
+    RewriteRule ^backend/composer\.(json|lock)$ - [F,L]
+
+    # 4. Strictly block executing any PHP or script files in uploads directory
+    RewriteRule ^uploads/.*(?i)\.(php|phtml|phar|php[0-9]|pl|py|sh|cgi|bash)$ - [F,L]
+    RewriteRule ^backend/public/uploads/.*(?i)\.(php|phtml|phar|php[0-9]|pl|py|sh|cgi|bash)$ - [F,L]
+
+    # 5. Route backend requests to Laravel
     RewriteRule ^backend/ - [L]
 
-    # إذا كان الملف أو المجلد موجود، استخدمه
+    # 6. If static file or directory exists, serve it
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteCond %{REQUEST_FILENAME} !-d
 
-    # وإلا أرسل للـ index.html (React SPA)
+    # 7. Otherwise, route to index.html (React SPA)
     RewriteRule ^ index.html [L]
+</IfModule>
+
+# Security Headers for all served files
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+    Header unset X-Powered-By
+    Header unset Server
 </IfModule>
