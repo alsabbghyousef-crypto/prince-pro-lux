@@ -79,23 +79,40 @@ const SuccessOverlay: React.FC<{
           </div>
         )}
 
-        {/* Items */}
-        <div className="space-y-4 pb-6 border-b border-dashed border-border print:border-gray-400 text-right text-sm">
-          <div className="flex justify-between items-center text-xs text-muted-foreground font-bold mb-2">
-            <span>الصنف</span>
-            <span>المجموع</span>
+        {/* Items Table with Dedicated Quantity (العدد) Column */}
+        <div className="pb-6 border-b border-dashed border-border print:border-gray-400 text-right text-sm">
+          <div className="grid grid-cols-12 gap-2 pb-2.5 border-b border-border/80 print:border-black text-xs text-muted-foreground print:text-black font-black mb-2">
+            <span className="col-span-5 text-right">الصنف</span>
+            <span className="col-span-2 text-center">العدد</span>
+            <span className="col-span-2 text-center">السعر</span>
+            <span className="col-span-3 text-left">المجموع</span>
           </div>
           {orderData.items?.map((item: any, i: number) => {
+            const qty = item.quantity || 1;
+            const price = item.price || 0;
+            const total = price * qty;
             return (
-              <div key={i} className="flex justify-between items-start">
-                <div className="flex flex-col text-right">
-                  <span className="font-bold text-base text-foreground print:text-black">{item.productName || item.name || 'مجهول'}</span>
-                  <div className="flex items-center gap-2 mt-1 justify-start">
-                    <span className="text-xs font-bold text-muted-foreground print:text-gray-500 bg-secondary/50 print:bg-transparent px-2 py-0.5 rounded-lg">{(item.price).toLocaleString()} × {item.quantity}</span>
-                  </div>
+              <div key={i} className="grid grid-cols-12 gap-2 items-center py-2 border-b border-dashed border-border/40 print:border-gray-300">
+                <div className="col-span-5 text-right flex flex-col">
+                  <span className="font-bold text-sm text-foreground print:text-black leading-tight">
+                    {item.productName || item.name || 'مجهول'}
+                  </span>
+                  {item.model && (
+                    <span className="text-[11px] text-muted-foreground print:text-gray-600 font-mono mt-0.5">
+                      {item.model}
+                    </span>
+                  )}
                 </div>
-                <div className="font-black text-base text-foreground print:text-black mt-0.5">
-                  {((item.price) * (item.quantity)).toLocaleString()}
+                <div className="col-span-2 text-center">
+                  <span className="font-black text-base text-foreground print:text-black bg-secondary/40 print:bg-transparent px-2 py-0.5 rounded-md inline-block min-w-[28px]">
+                    {qty}
+                  </span>
+                </div>
+                <div className="col-span-2 text-center text-xs font-bold text-muted-foreground print:text-black font-mono">
+                  {price.toLocaleString()}
+                </div>
+                <div className="col-span-3 text-left font-black text-base text-foreground print:text-black">
+                  {total.toLocaleString()}
                 </div>
               </div>
             );

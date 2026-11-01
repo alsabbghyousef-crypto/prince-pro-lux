@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Plus, Tag, Package, ImageIcon, Loader2, Save, X, Pencil, Trash2, AlertTriangle, Search, History, Upload, Download, ChevronRight, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { Plus, Tag, Package, ImageIcon, Loader2, Save, X, Pencil, Trash2, AlertTriangle, Search, History, Upload, Download, ChevronRight, ChevronLeft, CheckCircle2, FileSpreadsheet, Check } from 'lucide-react';
 import { cn } from '../lib/utils';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
@@ -216,6 +216,13 @@ const ItemsPage: React.FC = () => {
   const [categoryName, setCategoryName] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  // Excel Import with optional Profit Margin
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
+  const [rawImportItems, setRawImportItems] = useState<any[]>([]);
+  const [profitMarginPercent, setProfitMarginPercent] = useState<string>('');
+  const [useProfitMargin, setUseProfitMargin] = useState<boolean>(false);
+
   // ─── Optimistic Mutations ──────────────────────────────────────────────────
 
   // Save Product Mutation
@@ -381,6 +388,8 @@ const ItemsPage: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    setImportFileName(file.name);
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       const bstr = evt.target?.result;
@@ -450,20 +459,49 @@ const ItemsPage: React.FC = () => {
           model,
           color,
           price,
-          cost_price: cost,
+          originalPrice: price,
+          cost_price: Number(cost.toFixed(2)),
           currency: 'USD',
           stock
         });
       }
 
       if (mappedProducts.length > 0) {
-         if(confirm(`سيتم استيراد ${mappedProducts.length} منتج، هل أنت متأكد؟`)) {
-            bulkImportMutation.mutate(mappedProducts);
-         }
+        setRawImportItems(mappedProducts);
+        setProfitMarginPercent('');
+        setUseProfitMargin(false);
+        setIsImportModalOpen(true);
+      } else {
+        alert('لم يتم العثور على أي منتجات صالحة في الملف المحدد.');
       }
     };
     reader.readAsBinaryString(file);
     e.target.value = '';
+  };
+
+  const confirmImportExcel = () => {
+    const marginNum = parseFloat(profitMarginPercent);
+    const applyMargin = useProfitMargin && !isNaN(marginNum) && marginNum >= 0;
+
+    const finalProducts = rawImportItems.map(p => {
+      let finalPrice = p.originalPrice;
+      if (applyMargin) {
+        const baseCost = p.cost_price > 0 ? p.cost_price : p.originalPrice;
+        finalPrice = Number((baseCost * (1 + marginNum / 100)).toFixed(2));
+      }
+      return {
+        name: p.name,
+        model: p.model,
+        color: p.color,
+        price: finalPrice,
+        cost_price: p.cost_price,
+        currency: p.currency,
+        stock: p.stock
+      };
+    });
+
+    bulkImportMutation.mutate(finalProducts);
+    setIsImportModalOpen(false);
   };
 
   
@@ -1350,6 +1388,201 @@ const ItemsPage: React.FC = () => {
         onCancel={() => setDeletingCategory(null)}
         isLoading={deleteCategoryMutation.isPending}
       />
+
+      {/* ── Modal: Excel Import with Profit Margin Option ── */}
+      <ModalPortal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)}>
+        <div className="bg-card border border-border rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col p-6 sm:p-7 shadow-2xl relative z-10 space-y-5 animate-in zoom-in-95 duration-150">
+          
+          {/* Header */}
+          <div className="flex items-center justify-between pb-4 border-b border-border shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-bold shadow-inner">
+                <FileSpreadsheet className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-lg font-black text-foreground">استيراد المنتجات من ملف إكسيل</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  الملف: <span className="font-bold text-foreground font-mono" dir="ltr">{importFileName}</span> • تم العثور على <span className="font-bold text-primary">{rawImportItems.length}</span> منتج
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsImportModalOpen(false)}
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-xl transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Options: Choose Profit Margin Mode */}
+          <div className="space-y-4 overflow-y-auto pr-1 max-h-[60vh]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Option A: Import without changing prices */}
+              <button
+                type="button"
+                onClick={() => {
+                  setUseProfitMargin(false);
+                  setProfitMarginPercent('');
+                }}
+                className={`p-4 rounded-2xl border text-right transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                  !useProfitMargin
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm'
+                    : 'border-border bg-card hover:bg-secondary/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-foreground">الاستيراد بأسعار الإكسيل الأصلية</span>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${!useProfitMargin ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'}`}>
+                    {!useProfitMargin && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  الاحتفاظ بأسعار المبيع كما هي واردة بملف الإكسيل تماماً وبدون أي تعديل.
+                </p>
+              </button>
+
+              {/* Option B: Set Profit Margin */}
+              <button
+                type="button"
+                onClick={() => {
+                  setUseProfitMargin(true);
+                  if (!profitMarginPercent) setProfitMarginPercent('20');
+                }}
+                className={`p-4 rounded-2xl border text-right transition-all flex flex-col justify-between gap-2 cursor-pointer ${
+                  useProfitMargin
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-sm'
+                    : 'border-border bg-card hover:bg-secondary/40'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-sm text-foreground">تحديد نسبة ربح تلقائية (%)</span>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${useProfitMargin ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'}`}>
+                    {useProfitMargin && <Check className="w-3 h-3 stroke-[3]" />}
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  احتساب سعر المبيع تلقائياً = سعر التكلفة (رأس المال) + نسبة الربح المحددة.
+                </p>
+              </button>
+            </div>
+
+            {/* Profit Margin Controls (when enabled) */}
+            {useProfitMargin && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-secondary/40 border border-border/80 rounded-2xl p-4 space-y-3"
+              >
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <label className="text-xs font-bold text-foreground">
+                    نسبة الربح المضافة على رأس المال (التكلفة):
+                  </label>
+                  <div className="relative w-full sm:w-36">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.5"
+                      placeholder="مثال: 20"
+                      value={profitMarginPercent}
+                      onChange={(e) => setProfitMarginPercent(e.target.value)}
+                      className="w-full pl-8 pr-3 py-2 text-sm font-bold bg-background border border-border rounded-xl focus:ring-2 focus:ring-primary focus:outline-none text-center font-mono"
+                    />
+                    <span className="absolute left-3 top-2.5 text-xs font-black text-muted-foreground">%</span>
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[11px] font-bold text-muted-foreground ml-1">نسب شائعة:</span>
+                  {['10', '15', '20', '25', '30', '35', '40', '50'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setProfitMarginPercent(preset)}
+                      className={`px-2.5 py-1 text-xs font-bold rounded-lg border transition-all ${
+                        profitMarginPercent === preset
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background hover:bg-secondary border-border text-foreground'
+                      }`}
+                    >
+                      {preset}%
+                    </button>
+                  ))}
+                </div>
+
+                <div className="bg-primary/10 text-primary text-xs font-medium p-2.5 rounded-xl border border-primary/20 flex items-center gap-2">
+                  <span>💡 المعادلة المطبقة:</span>
+                  <span className="font-mono font-bold" dir="ltr">سعر المبيع = التكلفة × (1 + {profitMarginPercent || 0}%)</span>
+                </div>
+              </motion.div>
+            )}
+
+            {/* Live Preview Table (First 4 items) */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-muted-foreground">معاينة مباشرة لكيفية تسعير الأصناف عند الحفظ:</span>
+              <div className="border border-border/80 rounded-2xl overflow-hidden bg-background">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-secondary/60 text-muted-foreground font-black border-b border-border/80">
+                    <tr>
+                      <th className="py-2.5 px-3">الصنف</th>
+                      <th className="py-2.5 px-2 text-center">الكمية</th>
+                      <th className="py-2.5 px-2 text-center">التكلفة (رأس المال)</th>
+                      <th className="py-2.5 px-3 text-left">سعر المبيع النهائي</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/40 font-medium">
+                    {rawImportItems.slice(0, 4).map((item, idx) => {
+                      const marginNum = parseFloat(profitMarginPercent);
+                      const applyMargin = useProfitMargin && !isNaN(marginNum) && marginNum >= 0;
+                      const calculatedPrice = applyMargin
+                        ? Number(((item.cost_price > 0 ? item.cost_price : item.originalPrice) * (1 + marginNum / 100)).toFixed(2))
+                        : item.originalPrice;
+
+                      return (
+                        <tr key={idx} className="hover:bg-secondary/20">
+                          <td className="py-2.5 px-3 font-bold text-foreground">
+                            {item.name} {item.model && <span className="text-muted-foreground text-[10px] font-mono">({item.model})</span>}
+                          </td>
+                          <td className="py-2.5 px-2 text-center font-bold">{item.stock}</td>
+                          <td className="py-2.5 px-2 text-center font-mono text-muted-foreground">${item.cost_price}</td>
+                          <td className="py-2.5 px-3 text-left font-black text-emerald-600 dark:text-emerald-400 font-mono text-sm">
+                            ${calculatedPrice}
+                            {applyMargin && (
+                              <span className="text-[10px] font-normal text-muted-foreground block" dir="ltr">
+                                (+{profitMarginPercent}%)
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-border shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsImportModalOpen(false)}
+              className="px-5 py-2.5 text-sm font-bold bg-secondary text-foreground hover:bg-secondary/80 rounded-xl transition-colors"
+            >
+              إلغاء
+            </button>
+            <button
+              type="button"
+              onClick={confirmImportExcel}
+              disabled={bulkImportMutation.isPending}
+              className="px-6 py-2.5 text-sm font-black bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl shadow-md flex items-center gap-2 transition-all hover:scale-[1.02]"
+            >
+              <Upload className="w-4 h-4" />
+              {bulkImportMutation.isPending ? 'جاري الاستيراد...' : `تأكيد واستيراد (${rawImportItems.length}) منتج`}
+            </button>
+          </div>
+        </div>
+      </ModalPortal>
 
       {/* Reports Modals via Portal */}
       <ModalPortal isOpen={isInventoryReportOpen} onClose={() => setIsInventoryReportOpen(false)}>
